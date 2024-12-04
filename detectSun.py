@@ -152,39 +152,86 @@ class ImageProcessor:
             logging.warning("No image to convert. Please load an image first.")
             return None
 
-    def edgeDetection(self, display=False):
-       
-
-        # Create a binary mask of non-black pixels
-        _, binary_mask = cv2.threshold(self.imageData, 15, 255, cv2.THRESH_BINARY)
+    def edgeDetection(self, display=True):
+        # Step 1: Create a binary mask of non-black pixels
+        _, binary_mask = cv2.threshold(self.imageData, 35, 255, cv2.THRESH_BINARY)
         
-        # Find contours in the binary mask
+        if display:
+            plt.figure(figsize=(15,5))
+            plt.subplot(1,3,1)
+            plt.title('Binary Mask')
+            plt.imshow(binary_mask, cmap='gray')
+            plt.axis('off')
+        
+        # Step 2: Find contours in the binary mask
         contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         # Find the largest contour (should be the fisheye circle)
         largest_contour = max(contours, key=cv2.contourArea)
         
-        # Fit an ellipse to the largest contour
+        # Step 3: Fit an ellipse to the largest contour
         (x, y), (MA, ma), angle = cv2.fitEllipse(largest_contour)
 
         logging.info(f"Ellipse center: ({x}, {y}), Major Axis: {MA}, Minor Axis: {ma}, Angle: {angle}")
+        
         # Calculate the average radius
         radius = int((MA + ma) / 4)  # Divide by 4 because MA and ma are diameters
         
-        # Create a circular mask
+        # Debugging visualization of ellipse fit
+        if display:
+            plt.subplot(1,3,2)
+            plt.title('Ellipse Fit')
+            plt.imshow(self.imageData, cmap='gray')
+            
+            # Draw the fitted ellipse
+            ellipse = plt.Circle((x, y), radius, color='red', fill=False)
+            plt.gca().add_patch(ellipse)
+            plt.axis('off')
+        
+        # Step 4: Create a circular mask
         mask = np.zeros_like(self.imageData)
         cv2.circle(mask, (int(x), int(y)), int(radius * 1.1), 255, -1)
         
         # Apply the mask to the original image
         masked_img = cv2.bitwise_and(self.imageData, mask)
         
-        # Apply edge detection only to the masked region
+        if display:
+            plt.subplot(1,3,3)
+            plt.title('Masked Image')
+            plt.imshow(masked_img, cmap='gray')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
+        
+        # Step 5: Apply edge detection only to the masked region
         blurred = cv2.GaussianBlur(masked_img, (9, 9), 2)
         edges = cv2.Canny(blurred, 30, 60)
+        
+        # Debugging visualization of edge detection
+        if display:
+            plt.figure(figsize=(10,5))
+            plt.subplot(1,2,1)
+            plt.title('Blurred Masked Image')
+            plt.imshow(blurred, cmap='gray')
+            plt.axis('off')
+            
+            plt.subplot(1,2,2)
+            plt.title('Canny Edges')
+            plt.imshow(edges, cmap='gray')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
         
         # Dilate the edges
         kernel = np.ones((10,10), np.uint8)
         dilated = cv2.dilate(edges, kernel, iterations=1)
+        
+        if display:
+            plt.figure()
+            plt.title('Dilated Edges')
+            plt.imshow(dilated, cmap='gray')
+            plt.axis('off')
+            plt.show()
         
         # Find circles using Hough Circle Transform with tighter parameters
         circles = cv2.HoughCircles(
@@ -198,35 +245,183 @@ class ImageProcessor:
             maxRadius=int(radius * 1.1)
         )
         
+        # Final visualization of detected circles
+        if display and circles is not None:
+            plt.figure()
+            plt.title('Detected Horizon Circles')
+            plt.imshow(self.imageData, cmap='gray')
+            for x, y, r in circles[0,:]:
+                circle = plt.Circle((x, y), r, color='red', fill=False)
+                plt.gca().add_patch(circle)
+            plt.axis('off')
+            plt.show()
+        
         self.edge = circles
-        print(circles)
-        if display is True:
-            self.display_image()
-
         return circles
     
-    def sunDetectionSEP(self, display=False):
-        m, s = np.mean(self.imageData), np.std(self.imageData)
+    def detectHorizon(self, display=True):
+        """
+        Detect the horizon line in a fisheye image.
+        """
+        # Step 1: Create a binary mask of non-black pixels
+        _, binary_mask = cv2.threshold(self.imageData, 5, 255, cv2.THRESH_BINARY)
+        
+        if display:
+            plt.figure(figsize=(15,5))
+            plt.subplot(1,3,1)
+            plt.title('Binary Mask')
+            plt.imshow(binary_mask, cmap='gray')
+            plt.axis('off')
+        
+        # Step 2: Find contours in the binary mask
+        #contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        #print(contours)
 
-        bkg = sep.Background(self.imageData.astype(float))
-        #data_sub = self.image_array - bkg.rms()
+        contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        objects = sep.extract(self.imageData, 250, err=bkg.globalrms)
-        if len(objects) == 0:
-            objects = sep.extract(self.imageData, 200, err=bkg.globalrms)
+        # Draw contours on the original image
+        output = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2BGR)
+        cv2.drawContours(output, contours, -1, (0, 255, 0), 2)  # -1 means all contours
+
+        # Display the results
+        #cv2.imshow("Original", self.imageData)
+        #cv2.imshow("Contours", output)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+                # Find the largest contour (should be the fisheye circle)
+        largest_contour = max(contours, key=cv2.contourArea)
+        
+        # Step 3: Fit an ellipse to the largest contour
+        (x, y), (MA, ma), angle = cv2.fitEllipse(largest_contour)
+
+        logging.info(f"Ellipse center: ({x}, {y}), Major Axis: {MA}, Minor Axis: {ma}, Angle: {angle}")
+        
+        # Calculate the average radius
+        radius = int((MA + ma) / 4)  # Divide by 4 because MA and ma are diameters
+        
+        # Debugging visualization of ellipse fit
+        if display:
+            plt.subplot(1,3,2)
+            plt.title('Ellipse Fit')
+            m, s = np.mean(self.imageData), np.std(self.imageData)
+            plt.imshow(self.imageData, cmap='gray', vmin=m-s, vmax=m+s)
             
-        ind=np.argmax(objects['flux'])
+            # Draw the fitted ellipse
+            ellipse = plt.Circle((x, y), radius, color='red', fill=False)
+            plt.gca().add_patch(ellipse)
+            plt.axis('off')
         
-        cat = objects[ind:ind+1]
-        r = np.sqrt(cat['a']**2+cat['b']**2)
-        circle = np.array([cat['x'][0],cat['y'][0], r[0]])
+        # Step 4: Create a circular mask
+        mask = np.zeros_like(self.imageData)
+        cv2.circle(mask, (int(x), int(y)), int(radius * 1.1), 255, -1)
         
-        #plt.show()
-        self.sunLocation = circle
+        # Apply the mask to the original image
+        masked_img = cv2.bitwise_and(self.imageData, mask)
+        
+        if display:
+            plt.subplot(1,3,3)
+            plt.title('Masked Image')
+            plt.imshow(masked_img, cmap='gray')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
+        # Step 1: Edge detection
+        blurred = cv2.GaussianBlur(self.imageData, (9, 9), 2)
+        edges = cv2.Canny(masked_img, 1, 20)
+
+        if display:
+            plt.figure(figsize=(10,5))
+            plt.subplot(1,2,1)
+            plt.title('Blurred Masked Image')
+            m, s = np.mean(masked_img), np.std(masked_img)
+            plt.imshow(masked_img, cmap='gray', vmin=m-s, vmax=m+s)
+            plt.axis('off')
+            
+            plt.subplot(1,2,2)
+            plt.title('Canny Edges')
+            plt.imshow(edges, cmap='gray')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.show()
+        
+        # Dilate the edges
+        kernel = np.ones((5,5), np.uint8)
+        dilated = cv2.dilate(edges, kernel, iterations=3)
+        if display:
+            plt.figure()
+            plt.title('Dilated Edges')
+            plt.imshow(dilated, cmap='gray')
+            plt.axis('off')
+            plt.show()
+
+        # Step 2: Hough transform to find circular/elliptical shapes
+        circles = cv2.HoughCircles(dilated, cv2.HOUGH_GRADIENT, dp=1, minDist=self.imageData.shape[0] // 2,
+                                  param1=10, param2=20, minRadius=600, maxRadius=1000)
+        print(circles)
+        if display and circles is not None:
+            plt.figure(figsize=(10, 5))
+            plt.imshow(dilated, cmap='gray')
+            for x, y, r in circles[0, :]:
+                circle = plt.Circle((x, y), r, color='red', fill=False)
+                plt.gca().add_patch(circle)
+            plt.title('Detected Circles')
+            plt.axis('off')
+            plt.show()
+
+        if circles is not None:
+            # Step 3: Fit a line to the bottom of the circle/ellipse
+            center_x, center_y, radius = np.uint16(np.around(circles[0][0]))
+            bottom_y = center_y + radius
+            left_x = center_x - radius
+            right_x = center_x + radius
+            self.horizon_line = [(left_x, bottom_y), (right_x, bottom_y)]
+
+            # Step 4: Calculate the horizon angle
+            self.horizon_angle = np.arctan2(self.horizon_line[1][1] - self.horizon_line[0][1],
+                                           self.horizon_line[1][0] - self.horizon_line[0][0]) * 180 / np.pi
+        return circles
+        #return self.horizon_line, self.horizon_angle
+
+    def sunDetectionSEP(self, imageData, display=True):
+        threshold = 300
+        step = 50
+        min_threshold = 50
+    
+        m, s = np.mean(self.imageData), np.std(self.imageData)
+    
+        bkg = sep.Background(imageData.astype(float))
+    
+        while threshold >= min_threshold:
+            try:
+                # Attempt to extract sources with the current threshold
+                objects = sep.extract(imageData, threshold, err=bkg.globalrms)
+                
+                # If we find objects, break the loop
+                if len(objects) > 0:
+                    break
+            except Exception as e:
+                # Catch any exception and print the error message
+                print(f"Error while detecting objects at threshold {threshold}: {str(e)}")
+                print("Skipping this frame.")
+                return None
+            
+            # If no objects are found, decrease the threshold
+            threshold -= step
+    
+        # Ensure at least one object was found
+        if len(objects) == 0:
+            #print("No objects found at any threshold")
+            return None
+    
+        # Get the object with the maximum flux
+        cat = max(objects, key=lambda obj: obj['flux'])
+        r = np.sqrt(cat['a']**2 + cat['b']**2)
+        circle = np.array([cat['x'], cat['y'], r])
         
         if display is True:
             self.display_image()
-        #return circle
+        
+        return circle
     
     def image_to_math_azimuth(image_azimuth):
         """
@@ -393,8 +588,10 @@ class ImageProcessor:
 
 def testFITSimage(imageFileName):
     processor = ImageProcessor(imageFileName) 
-    processor.sunDetectionSEP(display=True)
-    edges = processor.edgeDetection(display=True)
+    #processor.load_image()
+    processor.sunDetectionSEP(display=False)
+    edges = processor.detectHorizon(display=True)
+    #edges = processor.edgeDetection(display=True)
 
 
 
@@ -410,7 +607,8 @@ def initCalibrate(imageFileName):
     
 
     processor.sunDetectionSEP(display=True)
-    edges = processor.edgeDetection(display=True)
+    #edges = processor.edgeDetection(display=True)
+    edges = processor.detectHorizon(display=True)
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0][0][0], edges[0][0][1], edges[0][0][2]
     
@@ -432,6 +630,7 @@ def measureSun(imageFileName, deltaAlt, deltaAzi):
     image_data = processor.convert_to_array()
     processor.sunDetectionSEP()
     edges = processor.edgeDetection()
+
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0][0][0], edges[0][0][1], edges[0][0][2]
     
@@ -493,9 +692,9 @@ def test():
             processor.display_image()
 
 if __name__ == "__main__":
-    #deltaAlt, deltaAzi = initCalibrate('images\\image_5_2024-09-06_16-19-27.jpg')
+    #deltaAlt, deltaAzi = initCalibrate('images/image_5_2024-09-06_16-19-27.jpg')
     
-    testFITSimage('output\\image_20241127_15_52_45_05.fits')
+    testFITSimage('images/image_20241127_15_52_45_04.fits')
     #deltaAlt, deltaAzi = initCalibrate('output\\image_20241127_15_52_45_05.fits')
     #measureSun('image_6_2024-09-06_16-19-28.jpg', deltaAlt, deltaAzi)
     #logging.info(f"Current Sun Altitude: {currentSunAlt} Current Sun Azimuth: {currentSunAzi}")
