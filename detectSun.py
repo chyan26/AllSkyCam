@@ -138,18 +138,18 @@ class ImageProcessor:
 
     def edgeDetection(self, display=False):
 
-        mask = cv2.inRange(self.imageData, 50, 2000)
+        mask = cv2.inRange(self.imageData, 50, self.imageData.max()/2)
         masked_image = cv2.bitwise_and(self.imageData, self.imageData, mask=mask)
         image_8bit = cv2.convertScaleAbs(masked_image, alpha=(255.0 / masked_image.max()))
 
-        edges = cv2.Canny(image_8bit, 20, 90)
+        edges = cv2.Canny(image_8bit, image_8bit.mean(), image_8bit.mean()+image_8bit.std())
         kernel = np.ones((5,5), np.uint8)
         dilated = cv2.dilate(edges, kernel, iterations=3)
 
         circles = cv2.HoughCircles(dilated, cv2.HOUGH_GRADIENT, dp=1, minDist=self.imageData.shape[0] // 2,
                                         param1=10, param2=20, 
                                         minRadius=1000, 
-                                        maxRadius=1500)
+                                        maxRadius=1200)
         # Final visualization of detected circles
         if display and circles is not None:
             plt.figure()
@@ -402,7 +402,7 @@ def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     
     processor = ImageProcessor(imageFileName)
     processor.sunDetectionSEP()
-    #edges = processor.edgeDetection()
+    edges = processor.edgeDetection()
 
     sun_x, sun_y, sun_r = processor.sunLocation
     processor.edge = edges
@@ -418,14 +418,18 @@ def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
     logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
-    processor.display_image()
+    #processor.display_image()
     return Alt, Azi, latitude, longitude
 
 def runTest():
     # Path to the directory containing images
     image_dir = './images'
-    file_pattern = "./images/20241129/image_20241129_14_40_1[456]_*.fits"
+    #file_pattern = "./images/20241129/image_20241129_14_40_1[456]_*.fits"
+    file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
     matching_files = glob.glob(file_pattern)
+    file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
+    matching_files += glob.glob(file_pattern)
+    
     matching_files.sort()
     deltaAlt, deltaAzi, edges = initCalibrate(matching_files[0])
     
