@@ -9,11 +9,27 @@ from datetime import datetime, timedelta
 from skyfield.api import Topos, load
 from scipy.optimize import minimize
 from astropy.io import fits
-
+import glob
 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s - [Line: %(lineno)d]')
+
+
+def showImage(imageData, circle=None, vmax=None):
+    plt.figure(figsize=(6,6))
+    m, s = np.mean(imageData), np.std(imageData)
+
+    
+    plt.imshow(imageData, cmap='gray',origin='lower', vmin=m-s, vmax=m+s)
+    if circle is not None:
+        for x, y, r in circle[0, :]:
+            circle = plt.Circle((x, y), r, color='red', fill=False)
+            plt.gca().add_patch(circle)
+
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
 
 class ImageProcessor:
     """
@@ -82,7 +98,8 @@ class ImageProcessor:
         try:
             if self.imageFileName.lower().endswith('.fits'):
                 # Load FITS file
-                self.imageData = fits.getdata(self.imageFileName)
+                imageData = fits.getdata(self.imageFileName)
+                self.imageData = np.ascontiguousarray(np.flipud(np.fliplr(imageData.astype(float))))
             else:
                 self.imageData = np.fliplr(Image.open(self.imageFileName).convert('L'))  # Convert to grayscale
                 self.imageData = np.ascontiguousarray(self.imageData)
@@ -91,39 +108,15 @@ class ImageProcessor:
         except FileNotFoundError:
             logging.error(f"Image not found at {self.imageFileName}.")
 
-    def plot_north_arrow(self, ax, sun_azimuth, image_center, arrow_length=500.0, color='blue'):
-        """
-        Plot an arrow pointing north based on the Sun's azimuth on an all-sky image.
-
-        Parameters:
-            ax (matplotlib.axes.Axes): The matplotlib axes to plot on.
-            sun_azimuth (float): The Sun's azimuth angle in degrees (0° = North, 90° = East).
-            image_center (tuple): The (x, y) coordinates of the image center.
-            arrow_length (float): Length of the arrow (relative to plot size).
-            color (str): Color of the arrow.
-        """
-        # Convert azimuth to radians for plotting
-        azimuth_rad = np.radians((90 - sun_azimuth) % 360)
-
-        # Calculate arrow endpoint based on azimuth angle
-        x_end = image_center[0] + arrow_length * np.cos(azimuth_rad)
-        y_end = image_center[1] + arrow_length * np.sin(azimuth_rad)
-
-        # Plot the arrow from the center point in the direction of the North
-        ax.arrow(
-            image_center[0], image_center[1],  # Starting point of the arrow (image center)
-            x_end - image_center[0], y_end - image_center[1],  # Arrow direction and length
-            head_width=100.0, head_length=70.0, fc=color, ec=color
-        )
-
+ 
     def display_image(self):
         """Displays the grayscale image."""
         if self.imageData is not None:
-            plt.imshow(self.imageData, cmap='gray')  # Display in grayscale
+            plt.imshow(self.imageData,origin='lower', cmap='gray')  # Display in grayscale
             if self.sunLocation is not None:
                 plt.scatter(self.sunLocation[0], self.sunLocation[1], s=100, c='red', marker='x')
             if self.edge is not None:
-                for x, y, r in self.edge[0,:]:
+                for x, y, r in self.edge:
                     circle = plt.Circle((x, y), r, color='red', fill=False)
                     plt.gca().add_patch(circle)
             #if self.sunAlt is not None:
@@ -142,252 +135,45 @@ class ImageProcessor:
         else:
             logging.warning("No image to display. Please load an image first.")
 
-    def convert_to_array(self):
-        """Converts the grayscale image to a NumPy array."""
-        if self.imageData is not None:
-            self.imageData_array = np.array(self.imageData)
-            logging.info("Image converted to NumPy array.")
-            return self.image_array
-        else:
-            logging.warning("No image to convert. Please load an image first.")
-            return None
 
-    def edgeDetection(self, display=True):
-        # Step 1: Create a binary mask of non-black pixels
-        _, binary_mask = cv2.threshold(self.imageData, 35, 255, cv2.THRESH_BINARY)
-        
-        if display:
-            plt.figure(figsize=(15,5))
-            plt.subplot(1,3,1)
-            plt.title('Binary Mask')
-            plt.imshow(binary_mask, cmap='gray')
-            plt.axis('off')
-        
-        # Step 2: Find contours in the binary mask
-        contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Find the largest contour (should be the fisheye circle)
-        largest_contour = max(contours, key=cv2.contourArea)
-        
-        # Step 3: Fit an ellipse to the largest contour
-        (x, y), (MA, ma), angle = cv2.fitEllipse(largest_contour)
+    def edgeDetection(self, display=False):
 
-        logging.info(f"Ellipse center: ({x}, {y}), Major Axis: {MA}, Minor Axis: {ma}, Angle: {angle}")
-        
-        # Calculate the average radius
-        radius = int((MA + ma) / 4)  # Divide by 4 because MA and ma are diameters
-        
-        # Debugging visualization of ellipse fit
-        if display:
-            plt.subplot(1,3,2)
-            plt.title('Ellipse Fit')
-            plt.imshow(self.imageData, cmap='gray')
-            
-            # Draw the fitted ellipse
-            ellipse = plt.Circle((x, y), radius, color='red', fill=False)
-            plt.gca().add_patch(ellipse)
-            plt.axis('off')
-        
-        # Step 4: Create a circular mask
-        mask = np.zeros_like(self.imageData)
-        cv2.circle(mask, (int(x), int(y)), int(radius * 1.1), 255, -1)
-        
-        # Apply the mask to the original image
-        masked_img = cv2.bitwise_and(self.imageData, mask)
-        
-        if display:
-            plt.subplot(1,3,3)
-            plt.title('Masked Image')
-            plt.imshow(masked_img, cmap='gray')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
-        
-        # Step 5: Apply edge detection only to the masked region
-        blurred = cv2.GaussianBlur(masked_img, (9, 9), 2)
-        edges = cv2.Canny(blurred, 30, 60)
-        
-        # Debugging visualization of edge detection
-        if display:
-            plt.figure(figsize=(10,5))
-            plt.subplot(1,2,1)
-            plt.title('Blurred Masked Image')
-            plt.imshow(blurred, cmap='gray')
-            plt.axis('off')
-            
-            plt.subplot(1,2,2)
-            plt.title('Canny Edges')
-            plt.imshow(edges, cmap='gray')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
-        
-        # Dilate the edges
-        kernel = np.ones((10,10), np.uint8)
-        dilated = cv2.dilate(edges, kernel, iterations=1)
-        
-        if display:
-            plt.figure()
-            plt.title('Dilated Edges')
-            plt.imshow(dilated, cmap='gray')
-            plt.axis('off')
-            plt.show()
-        
-        # Find circles using Hough Circle Transform with tighter parameters
-        circles = cv2.HoughCircles(
-            dilated,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=self.imageData.shape[0]/2,
-            param1=50,
-            param2=30,
-            minRadius=int(radius * 0.9),  # Use fitted ellipse to constrain radius search
-            maxRadius=int(radius * 1.1)
-        )
-        
+        mask = cv2.inRange(self.imageData, 50, 2000)
+        masked_image = cv2.bitwise_and(self.imageData, self.imageData, mask=mask)
+        image_8bit = cv2.convertScaleAbs(masked_image, alpha=(255.0 / masked_image.max()))
+
+        edges = cv2.Canny(image_8bit, 20, 90)
+        kernel = np.ones((5,5), np.uint8)
+        dilated = cv2.dilate(edges, kernel, iterations=3)
+
+        circles = cv2.HoughCircles(dilated, cv2.HOUGH_GRADIENT, dp=1, minDist=self.imageData.shape[0] // 2,
+                                        param1=10, param2=20, 
+                                        minRadius=1000, 
+                                        maxRadius=1500)
         # Final visualization of detected circles
         if display and circles is not None:
             plt.figure()
             plt.title('Detected Horizon Circles')
-            plt.imshow(self.imageData, cmap='gray')
+            m, s = np.mean(self.imageData), np.std(self.imageData)
+            plt.imshow(self.imageData,origin='lower', cmap='gray', vmin=m - s, vmax=m)
             for x, y, r in circles[0,:]:
                 circle = plt.Circle((x, y), r, color='red', fill=False)
                 plt.gca().add_patch(circle)
             plt.axis('off')
             plt.show()
         
-        self.edge = circles
-        return circles
+        self.edge = circles[0,:]
+        return circles[0,:]
     
-    def detectHorizon(self, display=True):
-        """
-        Detect the horizon line in a fisheye image.
-        """
-        # Step 1: Create a binary mask of non-black pixels
-        _, binary_mask = cv2.threshold(self.imageData, 5, 255, cv2.THRESH_BINARY)
-        
-        if display:
-            plt.figure(figsize=(15,5))
-            plt.subplot(1,3,1)
-            plt.title('Binary Mask')
-            plt.imshow(binary_mask, cmap='gray')
-            plt.axis('off')
-        
-        # Step 2: Find contours in the binary mask
-        #contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        #print(contours)
 
-        contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Draw contours on the original image
-        output = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2BGR)
-        cv2.drawContours(output, contours, -1, (0, 255, 0), 2)  # -1 means all contours
-
-        # Display the results
-        #cv2.imshow("Original", self.imageData)
-        #cv2.imshow("Contours", output)
-        #cv2.waitKey(0)
-        #cv2.destroyAllWindows()
-                # Find the largest contour (should be the fisheye circle)
-        largest_contour = max(contours, key=cv2.contourArea)
-        
-        # Step 3: Fit an ellipse to the largest contour
-        (x, y), (MA, ma), angle = cv2.fitEllipse(largest_contour)
-
-        logging.info(f"Ellipse center: ({x}, {y}), Major Axis: {MA}, Minor Axis: {ma}, Angle: {angle}")
-        
-        # Calculate the average radius
-        radius = int((MA + ma) / 4)  # Divide by 4 because MA and ma are diameters
-        
-        # Debugging visualization of ellipse fit
-        if display:
-            plt.subplot(1,3,2)
-            plt.title('Ellipse Fit')
-            m, s = np.mean(self.imageData), np.std(self.imageData)
-            plt.imshow(self.imageData, cmap='gray', vmin=m-s, vmax=m+s)
-            
-            # Draw the fitted ellipse
-            ellipse = plt.Circle((x, y), radius, color='red', fill=False)
-            plt.gca().add_patch(ellipse)
-            plt.axis('off')
-        
-        # Step 4: Create a circular mask
-        mask = np.zeros_like(self.imageData)
-        cv2.circle(mask, (int(x), int(y)), int(radius * 1.1), 255, -1)
-        
-        # Apply the mask to the original image
-        masked_img = cv2.bitwise_and(self.imageData, mask)
-        
-        if display:
-            plt.subplot(1,3,3)
-            plt.title('Masked Image')
-            plt.imshow(masked_img, cmap='gray')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
-        # Step 1: Edge detection
-        blurred = cv2.GaussianBlur(self.imageData, (9, 9), 2)
-        edges = cv2.Canny(masked_img, 1, 20)
-
-        if display:
-            plt.figure(figsize=(10,5))
-            plt.subplot(1,2,1)
-            plt.title('Blurred Masked Image')
-            m, s = np.mean(masked_img), np.std(masked_img)
-            plt.imshow(masked_img, cmap='gray', vmin=m-s, vmax=m+s)
-            plt.axis('off')
-            
-            plt.subplot(1,2,2)
-            plt.title('Canny Edges')
-            plt.imshow(edges, cmap='gray')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
-        
-        # Dilate the edges
-        kernel = np.ones((5,5), np.uint8)
-        dilated = cv2.dilate(edges, kernel, iterations=3)
-        if display:
-            plt.figure()
-            plt.title('Dilated Edges')
-            plt.imshow(dilated, cmap='gray')
-            plt.axis('off')
-            plt.show()
-
-        # Step 2: Hough transform to find circular/elliptical shapes
-        circles = cv2.HoughCircles(dilated, cv2.HOUGH_GRADIENT, dp=1, minDist=self.imageData.shape[0] // 2,
-                                  param1=10, param2=20, minRadius=600, maxRadius=1000)
-        print(circles)
-        if display and circles is not None:
-            plt.figure(figsize=(10, 5))
-            plt.imshow(dilated, cmap='gray')
-            for x, y, r in circles[0, :]:
-                circle = plt.Circle((x, y), r, color='red', fill=False)
-                plt.gca().add_patch(circle)
-            plt.title('Detected Circles')
-            plt.axis('off')
-            plt.show()
-
-        if circles is not None:
-            # Step 3: Fit a line to the bottom of the circle/ellipse
-            center_x, center_y, radius = np.uint16(np.around(circles[0][0]))
-            bottom_y = center_y + radius
-            left_x = center_x - radius
-            right_x = center_x + radius
-            self.horizon_line = [(left_x, bottom_y), (right_x, bottom_y)]
-
-            # Step 4: Calculate the horizon angle
-            self.horizon_angle = np.arctan2(self.horizon_line[1][1] - self.horizon_line[0][1],
-                                           self.horizon_line[1][0] - self.horizon_line[0][0]) * 180 / np.pi
-        return circles
-        #return self.horizon_line, self.horizon_angle
-
-    def sunDetectionSEP(self, imageData, display=True):
+    def sunDetectionSEP(self, imageData = None, display=False):
         threshold = 300
         step = 50
         min_threshold = 50
-    
-        m, s = np.mean(self.imageData), np.std(self.imageData)
+
+        if imageData is None:
+            imageData = self.imageData
+        m, s = np.mean(imageData), np.std(imageData)
     
         bkg = sep.Background(imageData.astype(float))
     
@@ -417,37 +203,12 @@ class ImageProcessor:
         cat = max(objects, key=lambda obj: obj['flux'])
         r = np.sqrt(cat['a']**2 + cat['b']**2)
         circle = np.array([cat['x'], cat['y'], r])
-        
+        self.sunLocation = circle
         if display is True:
             self.display_image()
         
         return circle
     
-    def image_to_math_azimuth(image_azimuth):
-        """
-        Convert azimuth from all-sky image system to mathematical system.
-        
-        Parameters:
-            image_azimuth (float): Azimuth in the all-sky image system (0° = North, 90° = East, clockwise).
-            
-        Returns:
-            float: Azimuth in the mathematical system (0° = East, 90° = North, counterclockwise).
-        """
-        math_azimuth = (90 - image_azimuth) % 360
-        return math_azimuth
-
-    def math_to_image_azimuth(math_azimuth):
-        """
-        Convert azimuth from mathematical system to all-sky image system.
-        
-        Parameters:
-            math_azimuth (float): Azimuth in the mathematical system (0° = East, 90° = North, counterclockwise).
-            
-        Returns:
-            float: Azimuth in the all-sky image system (0° = North, 90° = East, clockwise).
-        """
-        image_azimuth = (90 - math_azimuth) % 360
-        return image_azimuth
 
     def getLocalTimeFromFileName(self, file_path):
         """
@@ -459,14 +220,14 @@ class ImageProcessor:
         base_filename = os.path.basename(file_path)
 
         # Extract the date and time part from the filename
-        # Assuming the format is 'image_<index>_<YYYY-MM-DD>_<HH-MM-SS>.png'
+        # Assuming the format is 'image_<YYYYMMDD>_<HH_MM_SS_MS>.fits'
         # Splitting by underscores and getting the relevant parts
         parts = base_filename.split('_')
-        date_str = parts[2]  # '2024-09-06'
-        time_str = parts[3].split('.')[0]  # '16-18-09' from '16-18-09.png'
+        date_str = parts[1]  # '20241129'
+        time_str = parts[2] + ':' + parts[3] + ':' + parts[4]  # '13:50:45'
 
         # Combine date and time strings
-        combined_str = f"{date_str} {time_str.replace('-', ':')}"  # Replace '-' in time with ':'
+        combined_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]} {time_str}"  # '2024-11-29 13:50:45'
 
         # Convert to datetime object
         dt = datetime.strptime(combined_str, '%Y-%m-%d %H:%M:%S')
@@ -534,7 +295,7 @@ class ImageProcessor:
         altitude = 90 - normalized_distance * 90  # Map [0, 1] to [90°, 0°]
 
         # Calculate azimuth (angle clockwise from North)
-        azimuth = (np.degrees(np.arctan2(dx, -dy)) + 360) % 360  # Adjust to [0, 360)
+        azimuth = (np.degrees(np.arctan2(dx, dy)) + 360) % 360  # Adjust to [0, 360)
 
 
         self.sunMeasuredAlt = altitude
@@ -579,20 +340,38 @@ class ImageProcessor:
         # Extract latitude and longitude if successful
         if result.success:
             latitude, longitude = result.x
-            print(f"Latitude: {latitude:.6f}°, Longitude: {longitude:.6f}°")
+            logging.info(f"Latitude: {latitude:.6f}°, Longitude: {longitude:.6f}°")
         else:
-            print("Optimization failed.")
-
+            logging.info("Optimization failed.")
+            latitude, longitude = None, None
         return latitude, longitude
 
 
 def testFITSimage(imageFileName):
     processor = ImageProcessor(imageFileName) 
-    #processor.load_image()
-    processor.sunDetectionSEP(display=False)
-    edges = processor.detectHorizon(display=True)
-    #edges = processor.edgeDetection(display=True)
+    localTime = processor.getLocalTimeFromFileName(imageFileName)
+    processor.initial_latitude = 24.852314
+    processor.initial_longitude = 120.923478
+    logging.info(f"Local Time: {localTime}")
 
+    processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
+
+    #processor.load_image()
+    processor.sunDetectionSEP(display=True)
+    edges = processor.edgeDetection(display=True)
+    sun_x, sun_y, sun_r = processor.sunLocation
+    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+    
+    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    deltaAlt = 0
+    deltaAzi = 0
+
+    Alt = processor.sunMeasuredAlt + deltaAlt
+    Azi = processor.sunMeasuredAzi + deltaAzi
+    
+    logging.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
+    #latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
+    #logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
 
 def initCalibrate(imageFileName):
@@ -600,17 +379,16 @@ def initCalibrate(imageFileName):
     processor = ImageProcessor(imageFileName) 
     localTime = processor.getLocalTimeFromFileName(imageFileName)
     logging.info(f"Local Time: {localTime}")
-    processor.initial_latitude = 25.013773
-    processor.initial_longitude = 121.852062
+    processor.initial_latitude = 24.874241
+    processor.initial_longitude = 120.947295
 
     processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
     
 
-    processor.sunDetectionSEP(display=True)
-    #edges = processor.edgeDetection(display=True)
-    edges = processor.detectHorizon(display=True)
+    processor.sunDetectionSEP(display=False)
+    edges = processor.edgeDetection(display=False)
     sun_x, sun_y, sun_r = processor.sunLocation
-    allsky_x, allsky_y, allsky_r = edges[0][0][0], edges[0][0][1], edges[0][0][2]
+    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
     
     logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
@@ -618,83 +396,83 @@ def initCalibrate(imageFileName):
     deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
     logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
     
-    return deltaAlt, deltaAzi
+    return deltaAlt, deltaAzi, edges
 
-def measureSun(imageFileName, deltaAlt, deltaAzi):
-    image_dir = './images'
-    imageFileName = os.path.join(image_dir, imageFileName)   
+def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     
     processor = ImageProcessor(imageFileName)
-
-    processor.load_image()
-    image_data = processor.convert_to_array()
     processor.sunDetectionSEP()
-    edges = processor.edgeDetection()
+    #edges = processor.edgeDetection()
 
     sun_x, sun_y, sun_r = processor.sunLocation
-    allsky_x, allsky_y, allsky_r = edges[0][0][0], edges[0][0][1], edges[0][0][2]
-    
+    processor.edge = edges
+    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+    logging.info(f"Sun Location: {processor.sunLocation}")
+    logging.info(f"Horizon: {edges}")
     logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
     Alt = processor.sunMeasuredAlt + deltaAlt
     Azi = processor.sunMeasuredAzi + deltaAzi
     
-    logging.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
+    logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
     latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
     logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
-    #return Alt, Azi
+    processor.display_image()
+    return Alt, Azi, latitude, longitude
 
-def test():
+def runTest():
     # Path to the directory containing images
     image_dir = './images'
+    file_pattern = "./images/20241129/image_20241129_14_40_1[456]_*.fits"
+    matching_files = glob.glob(file_pattern)
+    matching_files.sort()
+    deltaAlt, deltaAzi, edges = initCalibrate(matching_files[0])
     
-    # Loop through each file in the directory
-    for filename in os.listdir(image_dir)[0:2]:
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):  # Add more formats if needed
-            imageFileName = os.path.join(image_dir, filename)
-            logging.info(f"Processing image: {imageFileName}")
+    # Initialize lists to store the results
+    altitudes = []
+    azimuths = []
+    latitudes = []
+    longitudes = []
+    
+    for filename in matching_files[1:]:
+        altitude, azimuth, lat, lon = measureSun(filename, deltaAlt, deltaAzi, edges)
+        altitudes.append(altitude)
+        azimuths.append(azimuth)
+        latitudes.append(lat)
+        longitudes.append(lon)
 
-            # Initialize the ImageProcessor
-            processor = ImageProcessor(imageFileName)
+    # Convert lists to numpy arrays
+    altitudes = np.array(altitudes)
+    azimuths = np.array(azimuths)
+    latitudes = np.array(latitudes)
+    longitudes = np.array(longitudes)
 
-            # Load the image and convert it to a NumPy array
-            processor.load_image()
-            image_data = processor.convert_to_array()
-            
-            localTime = processor.getLocalTimeFromFileName(imageFileName)
-            logging.info(f"Local Time: {localTime}")
-            processor.initial_latitude = 25.013773
-            processor.initial_longitude = 121.852062
+    # Calculate means
+    mean_altitude = np.mean(altitudes)
+    mean_azimuth = np.mean(azimuths)
+    mean_latitude = np.mean(latitudes)
+    mean_longitude = np.mean(longitudes)
 
-            processor.calculateSun(processor.initLat, processor.initial_longitude, localTime)
-            
-            if image_data is not None:
-                logging.info(f"Image shape: {image_data.shape}")
+    # Calculate standard deviations
+    std_altitude = np.std(altitudes)
+    std_azimuth = np.std(azimuths)
+    std_latitude = np.std(latitudes)
+    std_longitude = np.std(longitudes)
 
-            processor.sunDetectionSEP()
+    print(f"Mean Altitude: {mean_altitude:.2f}° ± {std_altitude:.3f}°")
+    print(f"Mean Azimuth: {mean_azimuth:.2f}° ± {std_azimuth:.3f}°")
+    print(f"Mean Latitude: {mean_latitude:.6f}° ± {std_latitude:.6f}°")
+    print(f"Mean Longitude: {mean_longitude:.6f}° ± {std_longitude:.6f}°")
 
-            # Perform edge detection
-            edges = processor.edgeDetection()
-            logging.info(f"The detected circle of horizon (x, y, r )= {edges}")
-
-            logging.info(f"Sun Location: {processor.sunLocation}")
-            sun_x, sun_y, sun_r = processor.sunLocation
-            allsky_x, allsky_y, allsky_r = edges[0][0][0], edges[0][0][1], edges[0][0][2]
-
-            distance = np.sqrt((sun_x - allsky_x)**2 + (sun_y - allsky_y)**2)
-            logging.info(f"Distance between sun and allsky center: {distance}")
-            logging.info(f"Convert to Azimuth = {90-(distance/allsky_r)*90}")
-
-
-            logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
-            # Display the original image    
-            processor.display_image()
 
 if __name__ == "__main__":
     #deltaAlt, deltaAzi = initCalibrate('images/image_5_2024-09-06_16-19-27.jpg')
     
-    testFITSimage('images/image_20241127_15_52_45_04.fits')
+    #testFITSimage('images/image_20241127_15_52_45_04.fits')
+    #testFITSimage('./images/20241129/image_20241129_13_50_45_00.fits')
     #deltaAlt, deltaAzi = initCalibrate('output\\image_20241127_15_52_45_05.fits')
     #measureSun('image_6_2024-09-06_16-19-28.jpg', deltaAlt, deltaAzi)
     #logging.info(f"Current Sun Altitude: {currentSunAlt} Current Sun Azimuth: {currentSunAzi}")
+
+    runTest()

@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO,
                     datefmt="%Y-%m-%dT%H:%M:%S")
 
 class CameraAcquisition:
-    def __init__(self, exposure_time_ms=10.0, num_images=1, num_buffers=None, output_dir="output"):
+    def __init__(self, exposure_time_ms=0.12, num_images=1, num_buffers=None, output_dir="output"):
         self.exposure_time_ms = exposure_time_ms
         self.num_images = num_images
         self.num_buffers = num_buffers
