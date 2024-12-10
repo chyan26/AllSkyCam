@@ -429,7 +429,7 @@ def runTest():
     matching_files = glob.glob(file_pattern)
     file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
     matching_files += glob.glob(file_pattern)
-    
+
     matching_files.sort()
     deltaAlt, deltaAzi, edges = initCalibrate(matching_files[0])
     
@@ -471,12 +471,5 @@ def runTest():
 
 
 if __name__ == "__main__":
-    #deltaAlt, deltaAzi = initCalibrate('images/image_5_2024-09-06_16-19-27.jpg')
-    
-    #testFITSimage('images/image_20241127_15_52_45_04.fits')
-    #testFITSimage('./images/20241129/image_20241129_13_50_45_00.fits')
-    #deltaAlt, deltaAzi = initCalibrate('output\\image_20241127_15_52_45_05.fits')
-    #measureSun('image_6_2024-09-06_16-19-28.jpg', deltaAlt, deltaAzi)
-    #logging.info(f"Current Sun Altitude: {currentSunAlt} Current Sun Azimuth: {currentSunAzi}")
 
     runTest()
