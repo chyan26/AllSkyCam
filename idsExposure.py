@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
                     datefmt="%Y-%m-%dT%H:%M:%S")
 
 class CameraAcquisition:
-    def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output"):
+    def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output", perform_analysis=False):
         self.exposure_time_ms = exposure_time_ms
         self.num_images = num_images
         self.num_buffers = num_buffers
@@ -25,6 +25,7 @@ class CameraAcquisition:
         self.device = None
         self.data_stream = None
         self.remote_nodemap = None
+        self.perform_analysis = perform_analysis
 
     def setup_device(self):
         """Initializes the library and sets up the device manager."""
@@ -117,41 +118,41 @@ class CameraAcquisition:
                     localTime = datetime.datetime.now()
                     logging.info(f"Local Time: {localTime}")
 
-                    processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
-    
-
-                    processor.sunDetectionSEP(display=False)
-                    edges = processor.edgeDetection(display=False)
-                    sun_x, sun_y, sun_r = processor.sunLocation
-                    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-                    
-                    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
-                    
-                    deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
-                    deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
-                    logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
+                    if self.perform_analysis:
+                        processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
+                        processor.sunDetectionSEP(display=False)
+                        edges = processor.edgeDetection(display=False)
+                        sun_x, sun_y, sun_r = processor.sunLocation
+                        allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                        
+                        logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                        
+                        deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
+                        deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
+                        logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
 
                 else:
                     processor = ImageProcessor(image_data)
-                    processor.sunDetectionSEP()
-                    edges = processor.edgeDetection()
-                    localTime = datetime.datetime.now()
-                    logging.info(f"Local Time: {localTime}")
+                    if self.perform_analysis:
+                        processor.sunDetectionSEP()
+                        edges = processor.edgeDetection()
+                        localTime = datetime.datetime.now()
+                        logging.info(f"Local Time: {localTime}")
 
-                    sun_x, sun_y, sun_r = processor.sunLocation
-                    processor.edge = edges
-                    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-                    logging.info(f"Sun Location: {processor.sunLocation}")
-                    logging.info(f"Horizon: {edges}")
-                    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
-                    
-                    Alt = processor.sunMeasuredAlt + deltaAlt
-                    Azi = processor.sunMeasuredAzi + deltaAzi
-                    
-                    logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
-                    latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
-                    logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
-                                
+                        sun_x, sun_y, sun_r = processor.sunLocation
+                        processor.edge = edges
+                        allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                        logging.info(f"Sun Location: {processor.sunLocation}")
+                        logging.info(f"Horizon: {edges}")
+                        logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                        
+                        Alt = processor.sunMeasuredAlt + deltaAlt
+                        Azi = processor.sunMeasuredAzi + deltaAzi
+                        
+                        logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
+                        latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
+                        logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+                                    
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
                 logging.info(f"Processed image {i + 1}/{self.num_images}")
@@ -200,6 +201,7 @@ def parse_args():
     parser.add_argument("--images", type=int, default=1, help="Number of images to acquire")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
+    parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")
     return parser.parse_args()
 
 
@@ -211,7 +213,8 @@ def main():
         exposure_time_ms=args.exposure,
         num_images=args.images,
         num_buffers=args.buffers,
-        output_dir=args.output
+        output_dir=args.output,
+        perform_analysis=args.perform_analysis
     )
     acquisition.run()
 
