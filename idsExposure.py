@@ -6,6 +6,7 @@ import numpy as np
 from astropy.io import fits
 import os
 from datetime import datetime
+from .detectSun import ImageProcessor
 
 # Get the program name
 program_name = os.path.basename(__file__)
@@ -107,6 +108,50 @@ class CameraAcquisition:
                 buffer = self.data_stream.WaitForFinishedBuffer(1000)
                 img = ids_peak_ipl_extension.BufferToImage(buffer)
                 image_data = img.get_numpy_2D_16()
+                
+                if i == 0:
+                    processor = ImageProcessor(image_data) 
+                    logging.info(f"Image shape: {image_data.shape}")
+                    processor.initial_latitude = 24.874241
+                    processor.initial_longitude = 120.947295
+                    localTime = datetime.datetime.now()
+                    logging.info(f"Local Time: {localTime}")
+
+                    processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
+    
+
+                    processor.sunDetectionSEP(display=False)
+                    edges = processor.edgeDetection(display=False)
+                    sun_x, sun_y, sun_r = processor.sunLocation
+                    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                    
+                    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                    
+                    deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
+                    deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
+                    logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
+
+                else:
+                    processor = ImageProcessor(image_data)
+                    processor.sunDetectionSEP()
+                    edges = processor.edgeDetection()
+                    localTime = datetime.datetime.now()
+                    logging.info(f"Local Time: {localTime}")
+
+                    sun_x, sun_y, sun_r = processor.sunLocation
+                    processor.edge = edges
+                    allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                    logging.info(f"Sun Location: {processor.sunLocation}")
+                    logging.info(f"Horizon: {edges}")
+                    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                    
+                    Alt = processor.sunMeasuredAlt + deltaAlt
+                    Azi = processor.sunMeasuredAzi + deltaAzi
+                    
+                    logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
+                    latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
+                    logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+                                
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
                 logging.info(f"Processed image {i + 1}/{self.num_images}")
