@@ -418,18 +418,19 @@ def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
     logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
-    #processor.display_image()
+    processor.display_image()
     return Alt, Azi, latitude, longitude
 
 def runTest():
     # Path to the directory containing images
     image_dir = './images'
     #file_pattern = "./images/20241129/image_20241129_14_40_1[456]_*.fits"
-    file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
+    #file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
+    #matching_files = glob.glob(file_pattern)
+    #file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
+    file_pattern = './output/image_20241212_14_06_36*.fits'
     matching_files = glob.glob(file_pattern)
-    file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
-    matching_files += glob.glob(file_pattern)
-
+    print(matching_files)
     matching_files.sort()
     deltaAlt, deltaAzi, edges = initCalibrate(matching_files[0])
     

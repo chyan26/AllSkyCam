@@ -6,7 +6,7 @@ import numpy as np
 from astropy.io import fits
 import os
 from datetime import datetime
-from .detectSun import ImageProcessor
+from detectSun import ImageProcessor
 
 # Get the program name
 program_name = os.path.basename(__file__)
@@ -111,16 +111,16 @@ class CameraAcquisition:
                 image_data = img.get_numpy_2D_16()
                 
                 if i == 0:
-                    processor = ImageProcessor(image_data) 
+                    processor = ImageProcessor(image_data.astype('float')) 
                     logging.info(f"Image shape: {image_data.shape}")
                     processor.initial_latitude = 24.874241
                     processor.initial_longitude = 120.947295
-                    localTime = datetime.datetime.now()
+                    localTime = datetime.now()
                     logging.info(f"Local Time: {localTime}")
 
                     if self.perform_analysis:
                         processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
-                        processor.sunDetectionSEP(display=False)
+                        processor.sunDetectionSEP(display=True)
                         edges = processor.edgeDetection(display=False)
                         sun_x, sun_y, sun_r = processor.sunLocation
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
@@ -132,11 +132,11 @@ class CameraAcquisition:
                         logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
 
                 else:
-                    processor = ImageProcessor(image_data)
+                    processor = ImageProcessor(image_data.astype('float'))
                     if self.perform_analysis:
                         processor.sunDetectionSEP()
                         edges = processor.edgeDetection()
-                        localTime = datetime.datetime.now()
+                        localTime = datetime.now()
                         logging.info(f"Local Time: {localTime}")
 
                         sun_x, sun_y, sun_r = processor.sunLocation
@@ -197,8 +197,8 @@ class CameraAcquisition:
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
-    parser.add_argument("--exposure", type=float, default=10.0, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=1, help="Number of images to acquire")
+    parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
+    parser.add_argument("--images", type=int, default=2, help="Number of images to acquire")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")
