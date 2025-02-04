@@ -10,7 +10,7 @@ from skyfield.api import Topos, load
 from scipy.optimize import minimize
 from astropy.io import fits
 import glob
-
+from ubloxReader import GPSReader
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s - [Line: %(lineno)d]')
@@ -108,7 +108,26 @@ class ImageProcessor:
         except FileNotFoundError:
             logging.error(f"Image not found at {self.imageFileName}.")
 
- 
+    def getInitialLocationFromGPS(self):
+
+        
+        gps = GPSReader(system='GNSS').connect()
+        
+        try:
+            coords = gps.get_coordinates()
+            if coords:
+                lat, lon, gps_time, sats = coords
+                local_time = GPSReader.convert_to_taipei_time(gps_time)
+                self.initial_latitude = lat
+                self.initial_longitude = lon
+                logging.info(f"Latitude: {lat:.6f}, Longitude: {lon:.6f}")
+            else:
+                print("Could not get GPS fix")
+        finally:
+            gps.disconnect()
+
+        return self.initial_latitude, self.initial_longitude
+
     def display_image(self):
         """Displays the grayscale image."""
         if self.imageData is not None:
