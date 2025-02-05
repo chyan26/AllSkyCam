@@ -454,6 +454,7 @@ def runTest():
     #file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
     #matching_files = glob.glob(file_pattern)
     #file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
+    
     file_pattern = './output/image_20250204_14_5*.fits'
     matching_files = glob.glob(file_pattern)
     print(matching_files)
