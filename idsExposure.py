@@ -81,7 +81,7 @@ class CameraAcquisition:
 
         logging.info(f"Allocated and queued {buffer_count} buffers.")
 
-    def save_fits(self, image_data, exposure_num):
+    def save_fits(self, image_data, exposure_num, initial_latitude, initial_longitude):
         """
         Save the given image data to a FITS file with a specific naming convention.
         """
@@ -95,6 +95,8 @@ class CameraAcquisition:
 
         hdu = fits.PrimaryHDU(image_data)
         hdu.header['EXPTIME'] = (self.exposure_time_ms, 'Exposure time in milliseconds')
+        hdu.header['Latitute'] = initial_latitude
+        hdu.header['Longitude'] = initial_longitude
         hdu.writeto(filepath, overwrite=True)
         logging.info(f"Saved FITS file: {filepath}")
 
@@ -112,9 +114,10 @@ class CameraAcquisition:
                 
                 if i == 0:
                     processor = ImageProcessor(image_data.astype('float')) 
+                    processor.getInitialLocationFromGPS()
                     logging.info(f"Image shape: {image_data.shape}")
-                    processor.initial_latitude = 24.874241
-                    processor.initial_longitude = 120.947295
+                    #processor.initial_latitude = 24.874241
+                    #processor.initial_longitude = 120.947295
                     localTime = datetime.now()
                     logging.info(f"Local Time: {localTime}")
 
@@ -153,7 +156,7 @@ class CameraAcquisition:
                         latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
                         logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
                                     
-                self.save_fits(image_data, i)
+                self.save_fits(image_data, i, processor.initial_latitude, processor.initial_longitude)
                 self.data_stream.QueueBuffer(buffer)
                 logging.info(f"Processed image {i + 1}/{self.num_images}")
             except Exception as e:
@@ -198,7 +201,7 @@ def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=2, help="Number of images to acquire")
+    parser.add_argument("--images", type=int, default=5, help="Number of images to acquire")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")

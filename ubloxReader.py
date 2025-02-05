@@ -20,7 +20,7 @@ class GPSData:
     course: float = 0.0
 
 class GPSReader:
-    def __init__(self, device='/dev/tty.usbmodem14301', baudrate=9600, 
+    def __init__(self, device='/dev/ttyACM0', baudrate=9600, 
                  timeout=1, system: GNSSSystems = 'GNSS'):
         self.device = device
         self.baudrate = baudrate

@@ -169,6 +169,13 @@ class ImageProcessor:
                                         param1=10, param2=20, 
                                         minRadius=1000, 
                                         maxRadius=1200)
+        
+        if circles is None:
+            circles = cv2.HoughCircles(dilated, cv2.HOUGH_GRADIENT, dp=1, minDist=self.imageData.shape[0] // 2,
+                                        param1=10, param2=20, 
+                                        minRadius=800, 
+                                        maxRadius=1200)
+        
         # Final visualization of detected circles
         if display and circles is not None:
             plt.figure()
@@ -186,7 +193,7 @@ class ImageProcessor:
     
 
     def sunDetectionSEP(self, imageData = None, display=False):
-        threshold = 300
+        threshold = 400
         step = 50
         min_threshold = 50
 
@@ -447,7 +454,7 @@ def runTest():
     #file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
     #matching_files = glob.glob(file_pattern)
     #file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
-    file_pattern = './output/image_20241212_14_06_36*.fits'
+    file_pattern = './output/image_20250204_14_5*.fits'
     matching_files = glob.glob(file_pattern)
     print(matching_files)
     matching_files.sort()
