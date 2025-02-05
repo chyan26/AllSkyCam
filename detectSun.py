@@ -131,7 +131,9 @@ class ImageProcessor:
     def display_image(self):
         """Displays the grayscale image."""
         if self.imageData is not None:
-            plt.imshow(self.imageData,origin='lower', cmap='gray')  # Display in grayscale
+            m, s = np.mean(self.imageData), np.std(self.imageData)
+
+            plt.imshow(self.imageData,origin='lower', cmap='gray', vmin=m-s, vmax=m+s)  # Display in grayscale
             if self.sunLocation is not None:
                 plt.scatter(self.sunLocation[0], self.sunLocation[1], s=100, c='red', marker='x')
             if self.edge is not None:
@@ -453,9 +455,9 @@ def runTest():
     #file_pattern = "./images/20241129/image_20241129_14_40_1[456]_*.fits"
     #file_pattern = "./images/20241129/image_20241129_14_38_59_*.fits"
     #matching_files = glob.glob(file_pattern)
-    #file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
+    file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
     
-    file_pattern = './output/image_20250204_14_5*.fits'
+    #file_pattern = './output/image_20250204_14_5*.fits'
     matching_files = glob.glob(file_pattern)
     print(matching_files)
     matching_files.sort()
