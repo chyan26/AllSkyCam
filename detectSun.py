@@ -126,7 +126,7 @@ class ImageProcessor:
         finally:
             gps.disconnect()
 
-        return self.initial_latitude, self.initial_longitude
+        return lat, lon
 
     def display_image(self):
         """Displays the grayscale image."""
