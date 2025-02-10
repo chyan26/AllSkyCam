@@ -12,8 +12,14 @@ from astropy.io import fits
 import glob
 from ubloxReader import GPSReader
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s - [Line: %(lineno)d]')
+#program_name = os.path.basename(__file__)
+
+# Create formatters and handlers
+#formatter = logging.Formatter(
+#    fmt=f"%(asctime)s.%(msecs)03d %(levelname)s {program_name}:%(lineno)s %(message)s",
+#    datefmt="%Y-%m-%dT%H:%M:%S"
+#)
+
 
 
 def showImage(imageData, circle=None, vmax=None):
@@ -73,7 +79,9 @@ class ImageProcessor:
             self.imageData = input_data
         else:
             raise ValueError("input_data must be a numpy array or a file name")
-
+        self.logger = logging.getLogger('ImageProcessor')
+        self.logger.setLevel(logging.INFO)
+        self.logger.info("Initializing ImageProcessor")
 
         self.sun_mask = None
         self.edge = None
@@ -104,9 +112,9 @@ class ImageProcessor:
                 self.imageData = np.fliplr(Image.open(self.imageFileName).convert('L'))  # Convert to grayscale
                 self.imageData = np.ascontiguousarray(self.imageData)
             #import pdb; pdb.set_trace()
-            logging.info(f"Image loaded successfully: {self.imageFileName}")
+            self.logger.info(f"Image loaded successfully: {self.imageFileName}")
         except FileNotFoundError:
-            logging.error(f"Image not found at {self.imageFileName}.")
+            self.logger.error(f"Image not found at {self.imageFileName}.")
 
     def getInitialLocationFromGPS(self):
 
@@ -120,7 +128,7 @@ class ImageProcessor:
                 local_time = GPSReader.convert_to_taipei_time(gps_time)
                 self.initial_latitude = lat
                 self.initial_longitude = lon
-                logging.info(f"Latitude: {lat:.6f}, Longitude: {lon:.6f}")
+                self.logger.info(f"Latitude: {lat:.6f}, Longitude: {lon:.6f}")
             else:
                 print("Could not get GPS fix")
         finally:
@@ -148,13 +156,13 @@ class ImageProcessor:
             #    for x, y, r in self.edge[0,:]:
                 #y = self.edge[0,1]
                 #x, y, _ = self.edge[0,:]
-            #        logging.info(f"Plotting north arrow based on Sun Azimuth: {self.sunAzi}")
+            #        self.logger.info(f"Plotting north arrow based on Sun Azimuth: {self.sunAzi}")
             #        self.plot_north_arrow(plt.gca(), self.sunAzi, (x,y))
 
             plt.axis('off')
             plt.show()
         else:
-            logging.warning("No image to display. Please load an image first.")
+            self.logger.warning("No image to display. Please load an image first.")
 
 
     def edgeDetection(self, display=False):
@@ -293,7 +301,7 @@ class ImageProcessor:
         self.sunAzi = azimuth.degrees
         #return altitude.degrees, azimuth.degrees
         # Output the altitude and azimuth
-        logging.info(f"Sun's Actual Altitude: {altitude.degrees:.2f} Azimuth: {azimuth.degrees:.2f}°")
+        self.logger.info(f"Sun's Actual Altitude: {altitude.degrees:.2f} Azimuth: {azimuth.degrees:.2f}°")
 
     def calSunAltAzi(self, zenith, sun_position, radius_pixels):
         """
@@ -368,9 +376,9 @@ class ImageProcessor:
         # Extract latitude and longitude if successful
         if result.success:
             latitude, longitude = result.x
-            logging.info(f"Latitude: {latitude:.6f}°, Longitude: {longitude:.6f}°")
+            self.logger.info(f"Latitude: {latitude:.6f}°, Longitude: {longitude:.6f}°")
         else:
-            logging.info("Optimization failed.")
+            self.logger.info("Optimization failed.")
             latitude, longitude = None, None
         return latitude, longitude
 
@@ -380,7 +388,7 @@ def testFITSimage(imageFileName):
     localTime = processor.getLocalTimeFromFileName(imageFileName)
     processor.initial_latitude = 24.852314
     processor.initial_longitude = 120.923478
-    logging.info(f"Local Time: {localTime}")
+    self.logger.info(f"Local Time: {localTime}")
 
     processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
 
@@ -390,23 +398,23 @@ def testFITSimage(imageFileName):
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
     
-    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     deltaAlt = 0
     deltaAzi = 0
 
     Alt = processor.sunMeasuredAlt + deltaAlt
     Azi = processor.sunMeasuredAzi + deltaAzi
     
-    logging.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
+    self.logger.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
     #latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
-    #logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+    #self.logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
 
 def initCalibrate(imageFileName):
     #imageFileName = os.path.join(image_dir, 'image_5_2024-09-06_16-19-27.jpg')   
     processor = ImageProcessor(imageFileName) 
     localTime = processor.getLocalTimeFromFileName(imageFileName)
-    logging.info(f"Local Time: {localTime}")
+    self.logger.info(f"Local Time: {localTime}")
     processor.initial_latitude = 24.874241
     processor.initial_longitude = 120.947295
 
@@ -418,11 +426,11 @@ def initCalibrate(imageFileName):
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
     
-    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
     deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
     deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
-    logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
+    self.logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
     
     return deltaAlt, deltaAzi, edges
 
@@ -435,16 +443,16 @@ def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     sun_x, sun_y, sun_r = processor.sunLocation
     processor.edge = edges
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-    logging.info(f"Sun Location: {processor.sunLocation}")
-    logging.info(f"Horizon: {edges}")
-    logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    self.logger.info(f"Sun Location: {processor.sunLocation}")
+    self.logger.info(f"Horizon: {edges}")
+    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
     Alt = processor.sunMeasuredAlt + deltaAlt
     Azi = processor.sunMeasuredAzi + deltaAzi
     
-    logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
+    self.logger.info(f"Altitude: {Alt} Azimuth: {Azi}")
     latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
-    logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+    self.logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
     processor.display_image()
     return Alt, Azi, latitude, longitude

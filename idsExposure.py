@@ -1,3 +1,7 @@
+from logger_config import setup_logging
+setup_logging()
+
+
 import argparse
 import logging
 from ids_peak import ids_peak
@@ -8,28 +12,43 @@ import os
 from datetime import datetime
 from detectSun import ImageProcessor
 
-# Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
 
-# Get the program name
 program_name = os.path.basename(__file__)
-# Create a logger for the program
-logging.getLogger('idsExposure')
-logging.basicConfig(level=logging.INFO, 
-                    format=f"%(asctime)s.%(msecs)03d %(levelname)s {program_name}:%(lineno)s %(message)s",
-                    datefmt="%Y-%m-%dT%H:%M:%S")
 
-# Get the current time and format it for the log file name
-current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = os.path.join('logs', f"system_{current_time}.log")
+logger = logging.getLogger(program_name)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    handlers=[
-                        logging.FileHandler(log_filename),
-                        logging.StreamHandler()
-                    ])
+# # Create logs directory if it doesn't exist
+# os.makedirs('logs', exist_ok=True)
+
+# # Get the program name and setup logging
+# program_name = os.path.basename(__file__)
+# current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+# log_filename = os.path.join('logs', f"system_{current_time}.log")
+
+# # Create logger
+# logger = logging.getLogger(program_name)
+# logger.setLevel(logging.INFO)
+
+# # Create formatters and handlers
+# formatter = logging.Formatter(
+#     fmt=f"%(asctime)s.%(msecs)03d %(levelname)s {program_name}:%(lineno)s %(message)s",
+#     datefmt="%Y-%m-%dT%H:%M:%S"
+# )
+
+# # File handler
+# file_handler = logging.FileHandler(log_filename)
+# file_handler.setFormatter(formatter)
+
+# # Console handler
+# console_handler = logging.StreamHandler()
+# console_handler.setFormatter(formatter)
+
+# # Add handlers to logger
+# logger.addHandler(file_handler)
+# logger.addHandler(console_handler)
+
+# # Test logging
+# logger.info("Logging setup complete")
 
 class CameraAcquisition:
     def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output", perform_analysis=False):
@@ -50,7 +69,7 @@ class CameraAcquisition:
         ids_peak.Library.Initialize()
         device_manager = ids_peak.DeviceManager.Instance()
         device_found_callback = device_manager.DeviceFoundCallback(
-            lambda found_device: logging.info(f"Found device: Key={found_device.Key()}"))
+            lambda found_device: logger.info(f"Found device: Key={found_device.Key()}"))
 
         # Register device found callback
         device_manager.RegisterDeviceFoundCallback(device_found_callback)
@@ -59,7 +78,7 @@ class CameraAcquisition:
         device_manager.Update()
 
         if device_manager.Devices().empty():
-            logging.error("No device found. Exiting program.")
+            logger.error("No device found. Exiting program.")
             return False
 
         # Open the first device
@@ -77,15 +96,15 @@ class CameraAcquisition:
         try:
             exposure_time_node = self.remote_nodemap.FindNode("ExposureTime")
             exposure_time_node.SetValue(self.exposure_time_ms * 1000)  # Convert ms to µs
-            logging.info(f"Exposure time set to {self.exposure_time_ms} ms")
+            logger.info(f"Exposure time set to {self.exposure_time_ms} ms")
         except Exception as e:
-            logging.error(f"Error setting exposure time: {e}")
+            logger.error(f"Error setting exposure time: {e}")
 
         # Set the pixel format
         self.remote_nodemap.FindNode("PixelFormat").SetCurrentEntry('Mono12')
-        logging.info("Pixel format set to Mono12")
+        logger.info("Pixel format set to Mono12")
         self.remote_nodemap.FindNode("TLParamsLocked").SetValue(1)
-        logging.info("Transport layer parameters locked")
+        logger.info("Transport layer parameters locked")
 
     def allocate_buffers(self):
         """Allocates buffers for the data stream."""
@@ -97,7 +116,7 @@ class CameraAcquisition:
             buffer = self.data_stream.AllocAndAnnounceBuffer(payload_size)
             self.data_stream.QueueBuffer(buffer)
 
-        logging.info(f"Allocated and queued {buffer_count} buffers.")
+        logger.info(f"Allocated and queued {buffer_count} buffers.")
 
     def save_fits(self, image_data, exposure_num):
         """
@@ -124,13 +143,13 @@ class CameraAcquisition:
 
         try:
             hdu.writeto(filepath, overwrite=True)
-            logging.info(f"Saved FITS file: {filepath}")
+            logger.info(f"Saved FITS file: {filepath}")
         except Exception as e:
-            logging.error(f"Failed to save FITS file: {filepath}, error: {e}")
+            logger.error(f"Failed to save FITS file: {filepath}, error: {e}")
 
     def process_images(self):
         """Processes a configurable number of images."""
-        logging.info("Starting image acquisition...")
+        logger.info("Starting image acquisition...")
         self.data_stream.StartAcquisition()
         self.remote_nodemap.FindNode("AcquisitionStart").Execute()
 
@@ -143,9 +162,9 @@ class CameraAcquisition:
                 if i == 0:
                     processor = ImageProcessor(image_data.astype('float')) 
                     self.init_latitute, self.init_longitude = (24.874241, 120.947295)
-                    logging.info(f"Image shape: {image_data.shape}")
+                    logger.info(f"Image shape: {image_data.shape}")
                     localTime = datetime.now()
-                    logging.info(f"Local Time: {localTime}")
+                    logger.info(f"Local Time: {localTime}")
 
                     if self.perform_analysis:
                         processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
@@ -154,11 +173,11 @@ class CameraAcquisition:
                         sun_x, sun_y, sun_r = processor.sunLocation
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
                         
-                        logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                        logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
                         
                         deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
                         deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
-                        logging.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
+                        logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
 
                 else:
                     processor = ImageProcessor(image_data.astype('float'))
@@ -166,34 +185,34 @@ class CameraAcquisition:
                         processor.sunDetectionSEP()
                         edges = processor.edgeDetection()
                         localTime = datetime.now()
-                        logging.info(f"Local Time: {localTime}")
+                        logger.info(f"Local Time: {localTime}")
 
                         sun_x, sun_y, sun_r = processor.sunLocation
                         processor.edge = edges
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-                        logging.info(f"Sun Location: {processor.sunLocation}")
-                        logging.info(f"Horizon: {edges}")
-                        logging.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                        logger.info(f"Sun Location: {processor.sunLocation}")
+                        logger.info(f"Horizon: {edges}")
+                        logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
                         
                         Alt = processor.sunMeasuredAlt + deltaAlt
                         Azi = processor.sunMeasuredAzi + deltaAzi
                         
-                        logging.info(f"Altitude: {Alt} Azimuth: {Azi}")
+                        logger.info(f"Altitude: {Alt} Azimuth: {Azi}")
                         latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
-                        logging.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+                        logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
                                     
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
-                logging.info(f"Processed image {i + 1}/{self.num_images}")
+                logger.info(f"Processed image {i + 1}/{self.num_images}")
             except Exception as e:
-                logging.error(f"Error processing image {i + 1}: {e}")
+                logger.error(f"Error processing image {i + 1}: {e}")
 
         self.remote_nodemap.FindNode("AcquisitionStop").Execute()
         self.data_stream.StopAcquisition(ids_peak.AcquisitionStopMode_Default)
 
     def cleanup(self):
         """Cleans up resources after acquisition."""
-        logging.info("Cleaning up resources...")
+        logger.info("Cleaning up resources...")
         try:
             if self.data_stream and self.data_stream.IsGrabbing():
                 self.data_stream.StopAcquisition(ids_peak.AcquisitionStopMode_Default)
@@ -204,7 +223,7 @@ class CameraAcquisition:
                 self.data_stream.RevokeBuffer(buffer)
             self.remote_nodemap.FindNode("TLParamsLocked").SetValue(0)
         except Exception as e:
-            logging.error(f"Error during cleanup: {e}")
+            logger.error(f"Error during cleanup: {e}")
 
         if self.device:
             ids_peak.Library.Close()
@@ -218,7 +237,7 @@ class CameraAcquisition:
             self.allocate_buffers()
             self.process_images()
         except Exception as e:
-            logging.error(f"Exception during acquisition: {e}")
+            logger.error(f"Exception during acquisition: {e}")
         finally:
             self.cleanup()
 
