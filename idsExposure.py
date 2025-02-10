@@ -8,6 +8,9 @@ import os
 from datetime import datetime
 from detectSun import ImageProcessor
 
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
 # Get the program name
 program_name = os.path.basename(__file__)
 # Create a logger for the program
@@ -15,6 +18,18 @@ logging.getLogger('idsExposure')
 logging.basicConfig(level=logging.INFO, 
                     format=f"%(asctime)s.%(msecs)03d %(levelname)s {program_name}:%(lineno)s %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S")
+
+# Get the current time and format it for the log file name
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_filename = os.path.join('logs', f"system_{current_time}.log")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler(log_filename),
+                        logging.StreamHandler()
+                    ])
 
 class CameraAcquisition:
     def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output", perform_analysis=False):
@@ -96,6 +111,9 @@ class CameraAcquisition:
         filename = f"image_{date_str}_{time_str}_{run_number}.fits"
         filepath = os.path.join(self.output_dir, filename)
 
+        self.save_fits_file(image_data, filepath)
+
+    def save_fits_file(self, image_data, filepath):
         hdu = fits.PrimaryHDU(image_data)
         hdu.header['EXPTIME'] = (self.exposure_time_ms, 'Exposure time in milliseconds')
         
@@ -124,11 +142,8 @@ class CameraAcquisition:
                 
                 if i == 0:
                     processor = ImageProcessor(image_data.astype('float')) 
-                    #self.init_latitute, self.init_longitude = processor.getInitialLocationFromGPS()
                     self.init_latitute, self.init_longitude = (24.874241, 120.947295)
                     logging.info(f"Image shape: {image_data.shape}")
-                    #processor.initial_latitude = 24.874241
-                    #processor.initial_longitude = 120.947295
                     localTime = datetime.now()
                     logging.info(f"Local Time: {localTime}")
 
