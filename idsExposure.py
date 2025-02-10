@@ -119,14 +119,19 @@ class CameraAcquisition:
             hdu.header['EXPTIME'] = (self.exposure_time_ms, 'Exposure time in milliseconds')
             
             if self.init_latitute is not None:
-                hdu.header['INIT_LAT'] = (self.init_latitute, 'Latitude from GPS')
+                hdu.header['INIT_LAT'] = (self.init_latitute, 'Initial latitude from GPS')
             if self.init_longitude is not None:
-                hdu.header['INIT_LON'] = (self.init_longitude, 'Longitude from GPS')
+                hdu.header['INIT_LON'] = (self.init_longitude, 'Initial longitude from GPS')
             if self.measured_lat is not None:
                 hdu.header['MEAS_LAT'] = (self.measured_lat, 'Measured Latitude')
             if self.measured_lon is not None:
                 hdu.header['MEAS_LON'] = (self.measured_lon, 'Measured Longitude')
-                
+
+            # Get location from GPS
+            lat, lon = ImageProcessor.getInitialLocationFromGPS()
+            hdu.header['LATITUDE'] = (lat, 'Latitude from GPS')
+            hdu.header['LONGITUD'] = (lon, 'Longitude from GPS')
+
             # Write file
             hdu.writeto(filepath, overwrite=True)
             logger.info(f"Saved FITS file: {filepath}")
@@ -164,7 +169,13 @@ class CameraAcquisition:
                 
                 if i == 0:
                     processor = ImageProcessor(image_data.astype('float')) 
-                    self.init_latitute, self.init_longitude = (24.874241, 120.947295)
+                    try:
+                        self.init_latitute, self.init_longitude = processor.getInitialLocationFromGPS()
+                    except:
+                        logger("Failed to get initial location from GPS")
+                        self.init_latitute, self.init_longitude = (24.874241, 120.947295)
+                    
+
                     logger.info(f"Image shape: {image_data.shape}")
                     localTime = datetime.now()
                     logger.info(f"Local Time: {localTime}")
