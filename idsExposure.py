@@ -17,41 +17,11 @@ program_name = os.path.basename(__file__)
 
 logger = logging.getLogger(program_name)
 
-# # Create logs directory if it doesn't exist
-# os.makedirs('logs', exist_ok=True)
-
-# # Get the program name and setup logging
-# program_name = os.path.basename(__file__)
-# current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-# log_filename = os.path.join('logs', f"system_{current_time}.log")
-
-# # Create logger
-# logger = logging.getLogger(program_name)
-# logger.setLevel(logging.INFO)
-
-# # Create formatters and handlers
-# formatter = logging.Formatter(
-#     fmt=f"%(asctime)s.%(msecs)03d %(levelname)s {program_name}:%(lineno)s %(message)s",
-#     datefmt="%Y-%m-%dT%H:%M:%S"
-# )
-
-# # File handler
-# file_handler = logging.FileHandler(log_filename)
-# file_handler.setFormatter(formatter)
-
-# # Console handler
-# console_handler = logging.StreamHandler()
-# console_handler.setFormatter(formatter)
-
-# # Add handlers to logger
-# logger.addHandler(file_handler)
-# logger.addHandler(console_handler)
-
-# # Test logging
-# logger.info("Logging setup complete")
 
 class CameraAcquisition:
-    def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output", perform_analysis=False):
+    def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, output_dir="output", 
+                 perform_analysis=False):
+        
         self.exposure_time_ms = exposure_time_ms
         self.num_images = num_images
         self.num_buffers = num_buffers
@@ -63,6 +33,9 @@ class CameraAcquisition:
 
         self.init_latitute = None
         self.init_longitude = None
+
+        self.measured_lat = None
+        self.measured_lon = None
 
     def setup_device(self):
         """Initializes the library and sets up the device manager."""
@@ -120,17 +93,47 @@ class CameraAcquisition:
 
     def save_fits(self, image_data, exposure_num):
         """
-        Save the given image data to a FITS file with a specific naming convention.
+        Save the image data to a FITS file with metadata.
+        
+        Args:
+            image_data: The image data to save
+            exposure_num: The exposure sequence number
+        
+        The file is saved with format: image_YYYYMMDD_HH_MM_SS_NN.fits
+        where NN is the zero-padded exposure number
         """
-        os.makedirs(self.output_dir, exist_ok=True)
-        now = datetime.now()
-        date_str = now.strftime("%Y%m%d")
-        time_str = now.strftime("%H_%M_%S")
-        run_number = f"{exposure_num:02d}"
-        filename = f"image_{date_str}_{time_str}_{run_number}.fits"
-        filepath = os.path.join(self.output_dir, filename)
+        try:
+            # Create output directory if it doesn't exist
+            os.makedirs(self.output_dir, exist_ok=True)
+            
+            # Generate filename
+            now = datetime.now()
+            date_str = now.strftime("%Y%m%d")
+            time_str = now.strftime("%H_%M_%S")
+            run_number = f"{exposure_num:02d}"
+            filename = f"image_{date_str}_{time_str}_{run_number}.fits"
+            filepath = os.path.join(self.output_dir, filename)
 
-        self.save_fits_file(image_data, filepath)
+            # Create and populate FITS header
+            hdu = fits.PrimaryHDU(image_data)
+            hdu.header['EXPTIME'] = (self.exposure_time_ms, 'Exposure time in milliseconds')
+            
+            if self.init_latitute is not None:
+                hdu.header['INIT_LAT'] = (self.init_latitute, 'Latitude from GPS')
+            if self.init_longitude is not None:
+                hdu.header['INIT_LON'] = (self.init_longitude, 'Longitude from GPS')
+            if self.measured_lat is not None:
+                hdu.header['MEAS_LAT'] = (self.measured_lat, 'Measured Latitude')
+            if self.measured_lon is not None:
+                hdu.header['MEAS_LON'] = (self.measured_lon, 'Measured Longitude')
+                
+            # Write file
+            hdu.writeto(filepath, overwrite=True)
+            logger.info(f"Saved FITS file: {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save FITS file: {filepath}, error: {e}")
+            raise
 
     def save_fits_file(self, image_data, filepath):
         hdu = fits.PrimaryHDU(image_data)
@@ -200,7 +203,10 @@ class CameraAcquisition:
                         logger.info(f"Altitude: {Alt} Azimuth: {Azi}")
                         latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
                         logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
-                                    
+                        self.measured_lat = latitude
+                        self.measured_lon = longitude
+
+
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
                 logger.info(f"Processed image {i + 1}/{self.num_images}")
