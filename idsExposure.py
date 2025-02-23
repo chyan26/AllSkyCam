@@ -226,7 +226,10 @@ class CameraAcquisition:
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
                         logger.info(f"Sun Location: {processor.sunLocation}")
                         logger.info(f"Horizon: {edges}")
-                        logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+                        
+                        processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
+                        
+                        logger.info(f"Measured Sun alt, azi = {processor.sunMeasuredAlt} {processor.sunMeasuredAzi}")
                         
                         Alt = processor.sunMeasuredAlt + deltaAlt
                         Azi = ((processor.sunMeasuredAzi + deltaAzi) % 360)

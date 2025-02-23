@@ -388,7 +388,7 @@ def testFITSimage(imageFileName):
     localTime = processor.getLocalTimeFromFileName(imageFileName)
     processor.initial_latitude = 24.852314
     processor.initial_longitude = 120.923478
-    self.logger.info(f"Local Time: {localTime}")
+    processor.logger.info(f"Local Time: {localTime}")
 
     processor.calculateSun(processor.initial_latitude, processor.initial_longitude, localTime)
 
@@ -398,14 +398,14 @@ def testFITSimage(imageFileName):
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
     
-    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    processor.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     deltaAlt = 0
     deltaAzi = 0
 
     Alt = processor.sunMeasuredAlt + deltaAlt
     Azi = processor.sunMeasuredAzi + deltaAzi
     
-    self.logger.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
+    processor.logger.info(f"Altitude: {Alt} Delta Azimuth: {Azi}")
     #latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
     #self.logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
@@ -414,7 +414,7 @@ def initCalibrate(imageFileName):
     #imageFileName = os.path.join(image_dir, 'image_5_2024-09-06_16-19-27.jpg')   
     processor = ImageProcessor(imageFileName) 
     localTime = processor.getLocalTimeFromFileName(imageFileName)
-    self.logger.info(f"Local Time: {localTime}")
+    processor.logger.info(f"Local Time: {localTime}")
     processor.initial_latitude = 24.874241
     processor.initial_longitude = 120.947295
 
@@ -426,11 +426,11 @@ def initCalibrate(imageFileName):
     sun_x, sun_y, sun_r = processor.sunLocation
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
     
-    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    processor.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
     deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
     deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
-    self.logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
+    processor.logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
     
     return deltaAlt, deltaAzi, edges
 
@@ -443,16 +443,16 @@ def measureSun(imageFileName, deltaAlt, deltaAzi, edges):
     sun_x, sun_y, sun_r = processor.sunLocation
     processor.edge = edges
     allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-    self.logger.info(f"Sun Location: {processor.sunLocation}")
-    self.logger.info(f"Horizon: {edges}")
-    self.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
+    processor.logger.info(f"Sun Location: {processor.sunLocation}")
+    processor.logger.info(f"Horizon: {edges}")
+    processor.logger.info(f"{processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)}")
     
     Alt = processor.sunMeasuredAlt + deltaAlt
     Azi = processor.sunMeasuredAzi + deltaAzi
     
-    self.logger.info(f"Altitude: {Alt} Azimuth: {Azi}")
+    processor.logger.info(f"Altitude: {Alt} Azimuth: {Azi}")
     latitude, longitude = processor.calculateLatLon(Alt, Azi, processor.getLocalTimeFromFileName(imageFileName))
-    self.logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
+    processor.logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
 
     processor.display_image()
     return Alt, Azi, latitude, longitude
