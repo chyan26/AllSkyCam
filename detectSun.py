@@ -508,6 +508,18 @@ def runTest():
     print(f"Mean Longitude: {mean_longitude:.6f}° ± {std_longitude:.6f}°")
 
 
+def runAnalysis():
+    file_pattern = "./images/20241129/image_20241129_14_39_00_*.fits"
+    
+    #file_pattern = './output/image_20250204_14_5*.fits'
+    matching_files = glob.glob(file_pattern)
+    print(matching_files)
+    matching_files.sort()
+
+
+
+
+
 if __name__ == "__main__":
 
     runTest()
