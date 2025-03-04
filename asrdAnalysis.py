@@ -4,6 +4,8 @@ import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from datetime import datetime
+from detectSun import ImageProcessor  # Import the ImageProcessor class
+from mpl_toolkits.basemap import Basemap
 
 def extract_lat_lon_azi_from_fits(file_path):
     with fits.open(file_path) as hdul:
@@ -50,35 +52,78 @@ def collect_lat_lon_data(file_pattern, start_time, end_time):
     
     return latitudes, longitudes, azimuths, labels
 
-def plot_lat_lon(latitudes, longitudes, azimuths, labels):
+def calculate_rotation_angle(measured_azimuth, actual_azimuth):
+    rotation_angle = actual_azimuth - measured_azimuth
+    return rotation_angle
+
+def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
     if not latitudes or not longitudes:
         print("No data to plot.")
         return
     
-    plt.scatter(longitudes, latitudes, marker='o', color='b')
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Create a Basemap instance with a spherical projection
+    m = Basemap(projection='ortho', lat_0=np.mean(latitudes), lon_0=np.mean(longitudes), resolution='l', ax=ax)
+    
+    # Convert latitudes and longitudes to map projection coordinates
+    x, y = m(longitudes, latitudes)
+    
+    m.scatter(x, y, marker='o', color='b')
+    
+    for i, label in enumerate(labels):
+        plt.text(x[i], y[i], label, fontsize=9, ha='right')
     
     # Calculate the range of the data
     lon_range = max(longitudes) - min(longitudes)
     lat_range = max(latitudes) - min(latitudes)
     
     # Set the arrow length as a fraction of the data range
-    arrow_length = min(lon_range, lat_range) * 0.02  # Adjusted to 2% of the smaller range
+    arrow_length = min(lon_range, lat_range) * 0.005  # Adjusted to 2% of the smaller range
     
-    for i, label in enumerate(labels):
-        plt.text(longitudes[i], latitudes[i], label, fontsize=9, ha='right')
+    # Calculate vector components based on the direction to the next position
+    u = []
+    v = []
+    for i in range(len(latitudes) - 1):
+        delta_lon = longitudes[i + 1] - longitudes[i]
+        delta_lat = latitudes[i + 1] - latitudes[i]
+        norm = np.sqrt(delta_lon**2 + delta_lat**2)
+        if norm != 0:
+            u.append(arrow_length * (delta_lon / norm))
+            v.append(arrow_length * (delta_lat / norm))
+        else:
+            u.append(0)
+            v.append(0)
     
-    # Calculate vector components based on azimuth
-    # Adjust azimuth to be measured from north and increase clockwise
-    adjusted_azimuths = (90 - np.array(azimuths)) % 360
-    u = arrow_length * np.cos(np.radians(adjusted_azimuths))
-    v = arrow_length * np.sin(np.radians(adjusted_azimuths))
+    # Add a zero vector for the last point
+    u.append(0)
+    v.append(0)
     
-    plt.quiver(longitudes, latitudes, u, v, angles='xy', scale_units='xy', scale=0.3, color='r')
+    # Convert vector components to map projection coordinates
+    u_proj, v_proj = m.rotate_vector(u, v, longitudes, latitudes)
     
-    plt.xlabel('Longitude')
-    plt.ylabel('Latitude')
-    plt.title('Latitude vs Longitude with Azimuth Vectors')
-    plt.grid(True)
+    # Plot vectors
+    m.quiver(x, y, u_proj, v_proj, angles='xy', scale_units='xy', scale=0.15, color='r')
+    
+    solar_azimuths = 90 - np.array(solar_azimuths) % 360  # Convert to meteorological convention
+    # Plot solar azimuths as vectors
+    solar_u = []
+    solar_v = []
+    for solar_azi in solar_azimuths:
+        solar_u.append(arrow_length * np.cos(np.radians(solar_azi)))
+        solar_v.append(arrow_length * np.sin(np.radians(solar_azi)))
+    
+    # Convert solar azimuth vectors to map projection coordinates
+    solar_u_proj, solar_v_proj = m.rotate_vector(solar_u, solar_v, longitudes, latitudes)
+    
+    m.quiver(x, y, solar_u_proj, solar_v_proj, angles='xy', scale_units='xy', scale=0.15, color='g')
+    
+    m.drawcoastlines()
+    m.drawcountries()
+    m.drawparallels(np.arange(-90., 91., 10.))
+    m.drawmeridians(np.arange(-180., 181., 10.))
+    
+    plt.title('Latitude vs Longitude with Direction Vectors and Solar Azimuths')
     plt.show()
 
 def runAnalysis():
@@ -90,7 +135,51 @@ def runAnalysis():
     print(f"Longitudes: {longitudes}")
     print(f"Azimuths: {azimuths}")
     print(f"Labels: {labels}")
-    plot_lat_lon(latitudes, longitudes, azimuths, labels)
 
+    fits_files = glob.glob(file_pattern)
+    fits_files.sort()
+
+    solar_azimuths = []
+    image_arrays = []
+
+    edges = None
+    for fits_file in fits_files:
+        file_datetime = parse_datetime_from_filename(fits_file)
+        if file_datetime is None:
+            continue
+        if start_time <= file_datetime <= end_time:
+            processor = ImageProcessor(fits_file)
+            print(f"Processing image {fits_file}...")
+            
+            if edges is None:
+                edges = processor.edgeDetection(display=False)
+                allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                print(f"Edges detected in image {fits_file}: {edges}")
+
+            processor.sunDetectionSEP()
+            print(f"processor.sunLocation: {processor.sunLocation}")
+            sun_x, sun_y, _ = processor.sunLocation
+            print(f"Sun location detected in image {fits_file}: x={sun_x}, y={sun_y}")
+            processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
+            sun_alt, sun_azi = processor.sunMeasuredAlt, processor.sunMeasuredAzi
+            print(f"Sun altitude and azimuth in image {fits_file}: {sun_alt}, {sun_azi}")
+            solar_azimuths.append(sun_azi)
+
+            # Collect image data
+            with fits.open(fits_file) as hdul:
+                image_data = hdul[0].data
+                image_arrays.append(image_data)
+
+    #plot_lat_lon(latitudes, longitudes, labels, solar_azimuths)
+
+    if solar_azimuths:
+        measured_azimuth = np.array(solar_azimuths)
+        actual_azimuth = 227.786+23.1593928
+        rotation_angle = calculate_rotation_angle(measured_azimuth, actual_azimuth)
+        print(f"Measured Azimuth: {measured_azimuth}")
+        print(f"Actual Azimuth: {actual_azimuth}")
+        print(f"Rotation Angle: {rotation_angle}")    
+
+    plot_lat_lon(latitudes, longitudes, labels, rotation_angle)
 if __name__ == "__main__":
     runAnalysis()

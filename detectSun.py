@@ -65,13 +65,16 @@ class ImageProcessor:
     """
     
     def __init__(self, input_data):
-        
         """
         Initializes the ImageProcessor with either image data array or file name.
 
         Parameters:
         input_data (numpy.ndarray or str): The image data array or the file name.
         """
+        self.logger = logging.getLogger('ImageProcessor')
+        self.logger.setLevel(logging.INFO)
+        self.logger.info("Initializing ImageProcessor")
+
         if isinstance(input_data, str):
             self.imageFileName = input_data
             self.load_image()
@@ -79,9 +82,6 @@ class ImageProcessor:
             self.imageData = input_data
         else:
             raise ValueError("input_data must be a numpy array or a file name")
-        self.logger = logging.getLogger('ImageProcessor')
-        self.logger.setLevel(logging.INFO)
-        self.logger.info("Initializing ImageProcessor")
 
         self.sun_mask = None
         self.edge = None
@@ -111,7 +111,6 @@ class ImageProcessor:
             else:
                 self.imageData = np.fliplr(Image.open(self.imageFileName).convert('L'))  # Convert to grayscale
                 self.imageData = np.ascontiguousarray(self.imageData)
-            #import pdb; pdb.set_trace()
             self.logger.info(f"Image loaded successfully: {self.imageFileName}")
         except FileNotFoundError:
             self.logger.error(f"Image not found at {self.imageFileName}.")
