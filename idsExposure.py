@@ -141,6 +141,9 @@ class CameraAcquisition:
 
             if self.measured_azi is not None:
                 hdu.header['MEAS_AZI'] = (self.measured_azi,'Measured Azi')
+            
+            if self.head_diff is not None:
+                hdu.header['HEAD_DIF'] = (self.head_diff, 'Camera heading')
 
             # Get location from GPS
             gps = GPSReader(system='GNSS').connect()
@@ -186,14 +189,14 @@ class CameraAcquisition:
                 img = ids_peak_ipl_extension.BufferToImage(buffer)
                 image_data = img.get_numpy_2D_16()
                 
+                processor = ImageProcessor(image_data.astype('float'))
+                
                 if i == 0:
-                    processor = ImageProcessor(image_data.astype('float')) 
                     try:
                         self.init_latitute, self.init_longitude = processor.getInitialLocationFromGPS()
                     except:
-                        logger("Failed to get initial location from GPS")
+                        logger.error("Failed to get initial location from GPS")
                         self.init_latitute, self.init_longitude = (24.874241, 120.947295)
-                    
 
                     logger.info(f"Image shape: {image_data.shape}")
                     localTime = datetime.now()
@@ -213,16 +216,17 @@ class CameraAcquisition:
                         deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
                         logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
 
+                        # Calculate heading of the camera
+                        self.head_diff = sunAzi - processor.sunMeasuredAzi
+                        logger.info(f"Heading difference (camera heading): {self.head_diff}")
+
                 else:
-                    processor = ImageProcessor(image_data.astype('float'))
                     if self.perform_analysis:
                         processor.sunDetectionSEP()
-                        #edges = processor.edgeDetection()
                         localTime = datetime.now()
                         logger.info(f"Local Time: {localTime}")
 
                         sun_x, sun_y, sun_r = processor.sunLocation
-                        #processor.edge = edges
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
                         logger.info(f"Sun Location: {processor.sunLocation}")
                         logger.info(f"Horizon: {edges}")
@@ -231,16 +235,16 @@ class CameraAcquisition:
                         
                         logger.info(f"Measured Sun alt, azi = {processor.sunMeasuredAlt} {processor.sunMeasuredAzi}")
                         
-                        Alt = processor.sunMeasuredAlt + deltaAlt
-                        Azi = ((processor.sunMeasuredAzi + deltaAzi) % 360)
+                        Alt = processor.sunMeasuredAlt
+                        Azi = processor.sunMeasuredAzi
                         
                         self.measured_alt = Alt
                         self.measured_azi = Azi
                         
                         logger.info(f"Measured Altitude: {Alt} Azimuth: {Azi}")
 
-                        self.head_diff = Azi-sunAzi
-                        logger.info(f"Heading difference = {Azi-sunAzi}")
+                        self.head_diff = Azi - sunAzi
+                        logger.info(f"Heading difference = {Azi - sunAzi}")
 
                         latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
                         logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
@@ -258,7 +262,7 @@ class CameraAcquisition:
                         finally:
                             gps.disconnect()
 
-                        logger.info(f"Location difference {self.measured_lat-lat} {self.measured_lon-lon} {sats}")    
+                        logger.info(f"Location difference {self.measured_lat - lat} {self.measured_lon - lon} {sats}")    
                 
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
@@ -309,7 +313,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
     parser.add_argument("--images", type=int, default=50, help="Number of images to acquire")
-    parser.add_argument("--sleep", type=int, default=5, help="time of seconds between exposures")
+    parser.add_argument("--sleep", type=int, default=0.5, help="time of seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")

@@ -5,7 +5,6 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from datetime import datetime
 from detectSun import ImageProcessor  # Import the ImageProcessor class
-from mpl_toolkits.basemap import Basemap
 
 def extract_lat_lon_azi_from_fits(file_path):
     with fits.open(file_path) as hdul:
@@ -61,18 +60,7 @@ def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
         print("No data to plot.")
         return
     
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # Create a Basemap instance with a spherical projection
-    m = Basemap(projection='ortho', lat_0=np.mean(latitudes), lon_0=np.mean(longitudes), resolution='l', ax=ax)
-    
-    # Convert latitudes and longitudes to map projection coordinates
-    x, y = m(longitudes, latitudes)
-    
-    m.scatter(x, y, marker='o', color='b')
-    
-    for i, label in enumerate(labels):
-        plt.text(x[i], y[i], label, fontsize=9, ha='right')
+    plt.scatter(longitudes, latitudes, marker='o', color='b')
     
     # Calculate the range of the data
     lon_range = max(longitudes) - min(longitudes)
@@ -80,6 +68,9 @@ def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
     
     # Set the arrow length as a fraction of the data range
     arrow_length = min(lon_range, lat_range) * 0.005  # Adjusted to 2% of the smaller range
+    
+    for i, label in enumerate(labels):
+        plt.text(longitudes[i], latitudes[i], label, fontsize=9, ha='right')
     
     # Calculate vector components based on the direction to the next position
     u = []
@@ -99,13 +90,9 @@ def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
     u.append(0)
     v.append(0)
     
-    # Convert vector components to map projection coordinates
-    u_proj, v_proj = m.rotate_vector(u, v, longitudes, latitudes)
+    #plt.quiver(longitudes, latitudes, u, v, angles='xy', scale_units='xy', scale=0.15, color='r')
     
-    # Plot vectors
-    m.quiver(x, y, u_proj, v_proj, angles='xy', scale_units='xy', scale=0.15, color='r')
-    
-    solar_azimuths = 90 - np.array(solar_azimuths) % 360  # Convert to meteorological convention
+    solar_azimuths = 90-np.array(solar_azimuths) % 360  # Convert to meteorological convention
     # Plot solar azimuths as vectors
     solar_u = []
     solar_v = []
@@ -113,17 +100,13 @@ def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
         solar_u.append(arrow_length * np.cos(np.radians(solar_azi)))
         solar_v.append(arrow_length * np.sin(np.radians(solar_azi)))
     
-    # Convert solar azimuth vectors to map projection coordinates
-    solar_u_proj, solar_v_proj = m.rotate_vector(solar_u, solar_v, longitudes, latitudes)
+    plt.quiver(longitudes, latitudes, solar_u, solar_v, angles='xy', scale_units='xy', scale=0.15, color='g')
     
-    m.quiver(x, y, solar_u_proj, solar_v_proj, angles='xy', scale_units='xy', scale=0.15, color='g')
-    
-    m.drawcoastlines()
-    m.drawcountries()
-    m.drawparallels(np.arange(-90., 91., 10.))
-    m.drawmeridians(np.arange(-180., 181., 10.))
-    
+     
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
     plt.title('Latitude vs Longitude with Direction Vectors and Solar Azimuths')
+    plt.grid(True)
     plt.show()
 
 def runAnalysis():
@@ -183,3 +166,4 @@ def runAnalysis():
     plot_lat_lon(latitudes, longitudes, labels, rotation_angle)
 if __name__ == "__main__":
     runAnalysis()
+    
