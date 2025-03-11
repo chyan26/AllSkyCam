@@ -7,6 +7,30 @@ The region of sky is ~1065 in radius.
 
 This script is designed to control an IDS Peak camera, acquire images, and optionally perform analysis on the acquired images. The images are saved in FITS format with relevant metadata.
 
+## Algorithm
+
+The script processes images to determine the measured azimuth of the Sun as observed by the AllSkyCam. The measured azimuth (\(A_m\)) is a composite of three components:
+- **Actual Azimuth of the Sun (\(A_s\))**: The true azimuthal position of the Sun in the sky, calculated using astronomical data.
+- **Flight Heading (\(H\))**: The orientation of the flight path relative to true north.
+- **Image Offset (\(\Delta\))**: An angular offset introduced by the camera's alignment or image processing.
+
+The relationship between these components is given by the following formula:
+
+\[ A_m = A_s + H + \Delta \]
+
+Where:
+- \(A_m\): Measured azimuth (degrees)
+- \(A_s\): Actual azimuth of the Sun (degrees)
+- \(H\): Flight heading (degrees)
+- \(\Delta\): Image offset (degrees)
+
+### Notes
+- All angles are in degrees and measured clockwise from true north.
+- The image offset (\(\Delta\)) may vary depending on camera calibration and mounting.
+
+For a rendered version of the equation, you can use an external LaTeX renderer like Codecogs:
+![Azimuth Formula](https://latex.codecogs.com/png.latex?A_m%20=%20A_s%20+%20H%20+%20%5CDelta)
+
 ## Features
 
 - Initialize and configure IDS Peak camera
@@ -55,27 +79,33 @@ The script uses the logging module to log acquisition and processing details. Lo
 
 
 ## Image Processing Functions
-cv2.inRange()
-Used for creating a binary mask based on pixel value thresholds
-cv2.bitwise_and()
-Performs bitwise AND operation between two arrays
-cv2.convertScaleAbs()
-Scales, calculates absolute values, and converts to 8-bit
-Edge Detection Functions
-cv2.Canny()
-Performs edge detection using the Canny algorithm
-cv2.dilate()
-Dilates an image using a specific kernel
-Circle Detection
-cv2.HoughCircles()
-Detects circles in an image using the Hough Circle Transform
-Parameters used:
-Method: cv2.HOUGH_GRADIENT
-dp = 1
-minDist = image_height/2
-param1 = 10
-param2 = 20
-minRadius = 800-1000
-maxRadius = 1200
+### Basic Image Operations
+- **cv2.inRange()**
+  - Used for creating a binary mask based on pixel value thresholds
+- **cv2.bitwise_and()**
+  - Performs bitwise AND operation between two arrays
+- **cv2.convertScaleAbs()**
+  - Scales, calculates absolute values, and converts to 8-bit
+
+### Edge Detection Functions
+- **cv2.Canny()**
+  - Performs edge detection using the Canny algorithm
+- **cv2.dilate()**
+  - Dilates an image using a specific kernel
+
+### Circle Detection
+- **cv2.HoughCircles()**
+  - Detects circles in an image using the Hough Circle Transform
+  
+#### Parameters used:
+- Method: `cv2.HOUGH_GRADIENT`
+- dp = 1
+- minDist = image_height/2
+- param1 = 10
+- param2 = 20
+- minRadius = 800-1000
+- maxRadius = 1200
+
+
 ## License
 This project is licensed under the MIT License.
