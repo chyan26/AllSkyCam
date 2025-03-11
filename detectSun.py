@@ -79,7 +79,7 @@ class ImageProcessor:
             self.imageFileName = input_data
             self.load_image()
         elif isinstance(input_data, np.ndarray):
-            self.imageData = input_data
+            self.imageData = np.ascontiguousarray(np.flipud(np.fliplr(input_data)))
         else:
             raise ValueError("input_data must be a numpy array or a file name")
 

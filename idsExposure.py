@@ -197,7 +197,7 @@ class CameraAcquisition:
                     except:
                         logger.error("Failed to get initial location from GPS")
                         self.init_latitute, self.init_longitude = (24.874241, 120.947295)
-
+                    logger.info(f" Lat and Lon from GPS {self.init_latitute} {self.init_longitude}")
                     logger.info(f"Image shape: {image_data.shape}")
                     localTime = datetime.now()
                     logger.info(f"Local Time: {localTime}")
@@ -214,6 +214,8 @@ class CameraAcquisition:
                         sunAzi = processor.sunAzi
                         deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
                         deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
+
+                        logger.info(f"Measured Sun alt, azi = {processor.sunMeasuredAlt} {processor.sunMeasuredAzi}")
                         logger.info(f"Delta Altitude: {deltaAlt} Delta Azimuth: {deltaAzi}")
 
                         # Calculate heading of the camera
@@ -243,8 +245,8 @@ class CameraAcquisition:
                         
                         logger.info(f"Measured Altitude: {Alt} Azimuth: {Azi}")
 
-                        self.head_diff = Azi - sunAzi
-                        logger.info(f"Heading difference = {Azi - sunAzi}")
+                        self.head_diff = sunAzi - Azi 
+                        logger.info(f"Heading difference = {self.head_diff}")
 
                         latitude, longitude = processor.calculateLatLon(Alt, Azi, localTime)
                         logger.info(f"Calculated Latitude: {latitude} Longitude: {longitude}")
@@ -312,7 +314,7 @@ def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=50, help="Number of images to acquire")
+    parser.add_argument("--images", type=int, default=40, help="Number of images to acquire")
     parser.add_argument("--sleep", type=int, default=0.5, help="time of seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
