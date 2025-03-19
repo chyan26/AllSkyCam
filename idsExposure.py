@@ -1,7 +1,6 @@
 from logger_config import setup_logging
 setup_logging()
 
-
 import argparse
 import logging
 from ids_peak import ids_peak
@@ -13,6 +12,8 @@ from datetime import datetime
 from detectSun import ImageProcessor
 from ubloxReader import GPSReader
 import time
+import threading
+import math
 
 program_name = os.path.basename(__file__)
 
@@ -21,19 +22,20 @@ logger = logging.getLogger(program_name)
 
 class CameraAcquisition:
     def __init__(self, exposure_time_ms=0.02, num_images=1, num_buffers=None, 
-                 output_dir="output", sleep_time = 0, 
-                 perform_analysis=False):
+                 output_dir="output", sleep_time=0, perform_analysis=False, 
+                 gps_update_frequency=1):
         
         self.exposure_time_ms = exposure_time_ms
         self.num_images = num_images
         self.num_buffers = num_buffers
         self.output_dir = output_dir
         self.sleep_time = sleep_time
+        self.perform_analysis = perform_analysis
+        self.gps_update_frequency = gps_update_frequency
 
         self.device = None
         self.data_stream = None
         self.remote_nodemap = None
-        self.perform_analysis = perform_analysis
 
         self.init_latitute = None
         self.init_longitude = None
@@ -45,6 +47,64 @@ class CameraAcquisition:
         self.measured_lon = None
 
         self.head_diff = None
+        self.gpsHeadingDiff = None
+
+        self.gps_thread = None
+        self.gps_running = False
+        self.gps_records = []
+
+    def start_gps_thread(self):
+        """Starts a thread to update GPS location at a specified frequency."""
+        self.gps_running = True
+        self.gps_thread = threading.Thread(target=self.update_gps_location)
+        self.gps_thread.start()
+
+    def stop_gps_thread(self):
+        """Stops the GPS update thread."""
+        self.gps_running = False
+        if self.gps_thread:
+            self.gps_thread.join()
+
+    def update_gps_location(self):
+        """Continuously updates the GPS location."""
+        gps = GPSReader(system='GNSS').connect()
+        while self.gps_running:
+            coords = gps.get_coordinates()
+            if coords:
+                self.measured_lat, self.measured_lon, gps_time, sats = coords
+                logger.info(f"Updated GPS location: Latitude={self.measured_lat}, Longitude={self.measured_lon}, Time={gps_time}, Satellites={sats}")
+                self.gps_records.append((self.measured_lat, self.measured_lon))
+                if len(self.gps_records) == 3:
+                    self.calculate_gps_heading_diff()
+            time.sleep(self.gps_update_frequency)
+        gps.disconnect()
+
+    def calculate_gps_heading_diff(self):
+        """Calculates the heading difference based on the first three GPS records.
+        Heading is measured from North (positive y-axis), increasing clockwise."""
+        if len(self.gps_records) < 3:
+            return
+
+        lat1, lon1 = self.gps_records[0]
+        lat2, lon2 = self.gps_records[1]
+        lat3, lon3 = self.gps_records[2]
+
+        # Calculate the vectors
+        vector1 = (lon2 - lon1, lat2 - lat1)  # (x, y) = (Δlon, Δlat)
+        vector2 = (lon3 - lon2, lat3 - lat2)  # (x, y) = (Δlon, Δlat)
+
+        # Calculate the angle from North (positive y-axis), clockwise
+        angle1 = math.pi / 2 - math.atan2(vector1[1], vector1[0])  # Shift reference to North
+        angle2 = math.pi / 2 - math.atan2(vector2[1], vector2[0])
+
+        # Convert to degrees and ensure clockwise convention
+        angle1_deg = math.degrees(angle1) % 360
+        angle2_deg = math.degrees(angle2) % 360
+
+        # Calculate the heading difference
+        self.gpsHeadingDiff = (angle2_deg + angle1_deg) / 2
+        logger.info(f"Calculated GPS heading difference: {self.gpsHeadingDiff} degrees")
+
 
     def setup_device(self):
         """Initializes the library and sets up the device manager."""
@@ -145,15 +205,9 @@ class CameraAcquisition:
             if self.head_diff is not None:
                 hdu.header['HEAD_DIF'] = (self.head_diff, 'Camera heading')
 
-            # Get location from GPS
-            gps = GPSReader(system='GNSS').connect()
-            coords = gps.get_coordinates()
-            if coords:
-                lat, lon, gps_time, sats = coords
-                #lat, lon = processor.getInitialLocationFromGPS()
-                hdu.header['LATITUDE'] = (lat, 'Latitude from GPS')
-                hdu.header['LONGITUD'] = (lon, 'Longitude from GPS')
-            gps.disconnect()
+            if self.gpsHeadingDiff is not None:
+                hdu.header['GPS_HEAD'] = (self.gpsHeadingDiff, 'GPS heading difference')
+
             # Write file
             hdu.writeto(filepath, overwrite=True)
             logger.info(f"Saved FITS file: {filepath}")
@@ -182,6 +236,8 @@ class CameraAcquisition:
         logger.info("Starting image acquisition...")
         self.data_stream.StartAcquisition()
         self.remote_nodemap.FindNode("AcquisitionStart").Execute()
+
+        self.start_gps_thread()
 
         for i in range(self.num_images):
             try:
@@ -278,6 +334,8 @@ class CameraAcquisition:
         self.remote_nodemap.FindNode("AcquisitionStop").Execute()
         self.data_stream.StopAcquisition(ids_peak.AcquisitionStopMode_Default)
 
+        self.stop_gps_thread()
+
     def cleanup(self):
         """Cleans up resources after acquisition."""
         logger.info("Cleaning up resources...")
@@ -314,11 +372,12 @@ def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=40, help="Number of images to acquire")
-    parser.add_argument("--sleep", type=int, default=0.5, help="time of seconds between exposures")
+    parser.add_argument("--images", type=int, default=2, help="Number of images to acquire")
+    parser.add_argument("--sleep", type=int, default=5, help="time of seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")
+    parser.add_argument("--gps_update_frequency", type=int, default=1, help="Frequency of GPS updates in seconds")
     return parser.parse_args()
 
 
@@ -332,10 +391,12 @@ def main():
         num_buffers=args.buffers,
         output_dir=args.output,
         sleep_time=args.sleep,
-        perform_analysis=args.perform_analysis
+        perform_analysis=args.perform_analysis,
+        gps_update_frequency=args.gps_update_frequency
     )
     acquisition.run()
 
 
 if __name__ == "__main__":
+    args = parse_args()
     main()

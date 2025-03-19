@@ -5,6 +5,8 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from datetime import datetime
 from detectSun import ImageProcessor  # Import the ImageProcessor class
+from headingVisualizer import HeadingVisualizer
+import time
 
 def extract_lat_lon_azi_from_fits(file_path):
     with fits.open(file_path) as hdul:
@@ -109,61 +111,80 @@ def plot_lat_lon(latitudes, longitudes, labels, solar_azimuths):
     plt.grid(True)
     plt.show()
 
+
+def animate_full_rotation(visualizer, heading):
+    """
+    Update visualizer with a single heading value.
+    
+    Args:
+        visualizer: HeadingVisualizer instance to animate
+        heading: Heading angle in degrees
+    """
+    visualizer.update_heading(heading)
+    visualizer.update_heading_text(heading)
+
+
 def runAnalysis():
     file_pattern = os.path.expanduser("~/AllSkyCam/output/image_*.fits")
-    start_time = datetime(2025, 2, 11, 14, 43, 31)  # Start time: 2025-02-11 14:43:31
-    end_time = datetime(2025, 2, 11, 14, 49, 14)    # End time: 2025-02-11 14:49:14
-    latitudes, longitudes, azimuths, labels = collect_lat_lon_data(file_pattern, start_time, end_time)
-    print(f"Latitudes: {latitudes}")
-    print(f"Longitudes: {longitudes}")
-    print(f"Azimuths: {azimuths}")
-    print(f"Labels: {labels}")
+    start_time = datetime(2025, 3, 11, 15, 42, 41)  # Start time
+    end_time = datetime(2025, 3, 11, 15, 47, 54)    # End time
 
     fits_files = glob.glob(file_pattern)
     fits_files.sort()
 
-    solar_azimuths = []
-    image_arrays = []
+    # Filter FITS files by timestamp
+    filtered_files = [
+        fits_file for fits_file in fits_files
+        if start_time <= parse_datetime_from_filename(fits_file) <= end_time
+    ]
 
-    edges = None
-    for fits_file in fits_files:
-        file_datetime = parse_datetime_from_filename(fits_file)
-        if file_datetime is None:
-            continue
-        if start_time <= file_datetime <= end_time:
-            processor = ImageProcessor(fits_file)
-            print(f"Processing image {fits_file}...")
+    print(f"Found {len(filtered_files)} FITS files in the specified time range.")
+    
+    if not filtered_files:
+        print("No files to process.")
+        return
+
+    # Initialize the HeadingVisualizer first
+    visualizer = HeadingVisualizer()
+    
+    # Track headings for later use if needed
+    headings = []
+    
+    # Process files one by one with real-time updates
+    def process_files(i=0):
+        if i < len(filtered_files):
+            fits_file = filtered_files[i]
             
-            if edges is None:
-                edges = processor.edgeDetection(display=False)
-                allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
-                print(f"Edges detected in image {fits_file}: {edges}")
-
-            processor.sunDetectionSEP()
-            print(f"processor.sunLocation: {processor.sunLocation}")
-            sun_x, sun_y, _ = processor.sunLocation
-            print(f"Sun location detected in image {fits_file}: x={sun_x}, y={sun_y}")
-            processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
-            sun_alt, sun_azi = processor.sunMeasuredAlt, processor.sunMeasuredAzi
-            print(f"Sun altitude and azimuth in image {fits_file}: {sun_alt}, {sun_azi}")
-            solar_azimuths.append(sun_azi)
-
-            # Collect image data
+            # Process the current file
             with fits.open(fits_file) as hdul:
-                image_data = hdul[0].data
-                image_arrays.append(image_data)
+                header = hdul[0].header
+                heading = header.get('HEAD_DIF', 0)  # Default to 0 if not found
+                headings.append(heading)
+                
+                # Update the visualizer immediately
+                animate_full_rotation(visualizer, heading)
+                
+                # Display filename and heading info
+                filename = os.path.basename(fits_file)
+                visualizer.canvas.delete("filename_text")
+                visualizer.canvas.create_text(150, 270, text=filename, tags="filename_text")
+                
+                print(f"File: {filename}, Heading: {heading}")
+            
+            # Schedule processing of the next file after delay
+            visualizer.root.after(1000, lambda: process_files(i+1))
+        else:
+            # All files processed
+            print("All files processed. Starting automatic animation loop...")
+            # Optionally start automatic animation loop after processing
+            #visualizer.root.after(2000, lambda: animation_loop(0))
+    
+    
+    # Start processing files
+    process_files()
+    
+    # Start the main tkinter loop
+    visualizer.start()
 
-    #plot_lat_lon(latitudes, longitudes, labels, solar_azimuths)
-
-    if solar_azimuths:
-        measured_azimuth = np.array(solar_azimuths)
-        actual_azimuth = 227.786+23.1593928
-        rotation_angle = calculate_rotation_angle(measured_azimuth, actual_azimuth)
-        print(f"Measured Azimuth: {measured_azimuth}")
-        print(f"Actual Azimuth: {actual_azimuth}")
-        print(f"Rotation Angle: {rotation_angle}")    
-
-    plot_lat_lon(latitudes, longitudes, labels, rotation_angle)
 if __name__ == "__main__":
     runAnalysis()
-    
