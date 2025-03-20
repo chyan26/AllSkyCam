@@ -25,11 +25,11 @@ class HeadingVisualizer:
         self.arrow = self.canvas.create_line(
             self.center_x, self.center_y,
             self.center_x, self.center_y - self.radius,
-            arrow=tk.LAST, fill="blue", width=10,arrowshape=(20, 25, 10) 
+            arrow=tk.LAST, fill="blue", width=10, arrowshape=(20, 25, 10)
         )
         
         # Add heading text
-        self.heading_text = self.canvas.create_text(150, 250, text="Heading: 0°")
+        self.heading_text = self.canvas.create_text(300, 500, text="Heading: 0°")
 
     def update_heading(self, heading):
         """Update the heading direction and text."""
@@ -51,35 +51,17 @@ class HeadingVisualizer:
     def _update_heading_text(self):
         """Update the heading text display."""
         self.canvas.itemconfig(self.heading_text, text=f"Heading: {self.heading:.1f}°")
-        
-def animate_full_rotation(visualizer, heading):
-    """
-    Update visualizer with a single heading value.
-    
-    Args:
-        visualizer: HeadingVisualizer instance to animate
-        heading: Heading angle in degrees
-    """
-    visualizer.update_heading(heading)
-    visualizer.update_heading_text(heading)
-
 
 if __name__ == "__main__":
-    visualizer = HeadingVisualizer()
+    root = tk.Tk()
+    visualizer = HeadingVisualizer(root)
     
-    # Generate random headings (500 elements between 0 and 350)
     random_headings = [random.randint(0, 350) for _ in range(500)]
     
-    # Set up animation loop outside the animate_full_rotation function
     def animation_loop(i=0):
         if i < len(random_headings):
-            # Update single frame
-            animate_full_rotation(visualizer, random_headings[i])
-            # Schedule next update
-            visualizer.root.after(100, lambda: animation_loop(i+1))
+            visualizer.update_heading(random_headings[i])
+            root.after(100, lambda: animation_loop(i+1))
     
-    # Start the animation loop
     animation_loop()
-    
-    # Start the main tkinter loop
-    visualizer.start()
+    root.mainloop()
