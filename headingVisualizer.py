@@ -4,19 +4,17 @@ import random
 
 class HeadingVisualizer:
     """Class to visualize the heading direction in real-time using tkinter."""
-    def __init__(self):
+    def __init__(self, root):
         self.heading = 0  # Initial heading value
-
-        # Set up the tkinter window
-        self.root = tk.Tk()
+        self.root = root
         self.root.title("Heading Visualizer")
-        self.canvas = tk.Canvas(self.root, width=300, height=300, bg="white")
+        self.canvas = tk.Canvas(self.root, width=600, height=600, bg="white")
         self.canvas.pack()
 
         # Draw a circle to represent the compass
-        self.center_x = 150
-        self.center_y = 150
-        self.radius = 100
+        self.center_x = 300
+        self.center_y = 300
+        self.radius = 250
         self.canvas.create_oval(
             self.center_x - self.radius, self.center_y - self.radius,
             self.center_x + self.radius, self.center_y + self.radius,
@@ -27,13 +25,17 @@ class HeadingVisualizer:
         self.arrow = self.canvas.create_line(
             self.center_x, self.center_y,
             self.center_x, self.center_y - self.radius,
-            arrow=tk.LAST, fill="blue", width=2
+            arrow=tk.LAST, fill="blue", width=10,arrowshape=(20, 25, 10) 
         )
+        
+        # Add heading text
+        self.heading_text = self.canvas.create_text(150, 250, text="Heading: 0°")
 
     def update_heading(self, heading):
-        """Update the heading direction."""
+        """Update the heading direction and text."""
         self.heading = heading
         self._update_arrow()
+        self._update_heading_text()
 
     def _update_arrow(self):
         """Update the arrow direction on the canvas."""
@@ -46,17 +48,10 @@ class HeadingVisualizer:
             end_x, end_y  # End point
         )
         
-    def update_heading_text(self, heading):
+    def _update_heading_text(self):
         """Update the heading text display."""
-        heading_text = f"Heading: {heading}°"
-        self.canvas.delete("heading_text")
-        self.canvas.create_text(150, 250, text=heading_text, tags="heading_text")
+        self.canvas.itemconfig(self.heading_text, text=f"Heading: {self.heading:.1f}°")
         
-    def start(self):
-        """Start the tkinter main loop."""
-        self.root.mainloop()
-
-
 def animate_full_rotation(visualizer, heading):
     """
     Update visualizer with a single heading value.
