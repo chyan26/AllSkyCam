@@ -267,8 +267,8 @@ class CameraAcquisition:
 
                     if self.perform_analysis:
                         processor.calculateSun(self.init_latitute, self.init_longitude, localTime)
-                        processor.sunDetectionSEP(display=True)
-                        edges = processor.edgeDetection(display=True)
+                        processor.sunDetectionSEP(display=False)
+                        edges = processor.edgeDetection(display=False)
                         sun_x, sun_y, sun_r = processor.sunLocation
                         allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
                         
@@ -382,13 +382,13 @@ class CameraAcquisition:
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
-    parser.add_argument("--exposure", type=float, default=2, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=3, help="Number of images to acquire")
+    parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
+    parser.add_argument("--images", type=int, default=800, help="Number of images to acquire")
     parser.add_argument("--sleep", type=int, default=1, help="time of seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")
-    parser.add_argument("--gps_update_frequency", type=int, default=1, help="Frequency of GPS updates in seconds")
+    parser.add_argument("--gps_update_frequency", type=int, default=0.1, help="Frequency of GPS updates in seconds")
     return parser.parse_args()
 
 def main():
