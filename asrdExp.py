@@ -22,14 +22,32 @@ def find_closest_heading(timestamp_str, heading_dict):
     
     return heading_dict.get(closest_time) if closest_time else None
 
+def find_closest_sequence(timestamp_str, sequence_dict):
+    """
+    Find the closest sequence number for a given timestamp.
+    """
+    target_time = parse_timestamp(timestamp_str)
+    closest_time = None
+    min_diff = float('inf')
+    
+    for time_str in sequence_dict:
+        time = parse_timestamp(time_str)
+        diff = abs((target_time - time).total_seconds())
+        if diff < min_diff:
+            min_diff = diff
+            closest_time = time_str
+    
+    return sequence_dict.get(closest_time) if closest_time else None
 def extract_gps_and_heading(log_file):
-    # Regular expressions for GPS and heading
+    # Regular expressions for GPS, heading, and sequence number
     gps_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
     heading_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Heading difference = ([\d.-]+)'
-    
+    sequence_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Saved FITS file: .*_(\d+)\.fits'
+
     coordinates = []  # List to store (timestamp, lat, lon) tuples
     heading_dict = {}  # Dictionary to store timestamp: heading pairs
-    
+    sequence_dict = {}  # Dictionary to store timestamp: sequence number pairs
+
     with open(log_file, 'r') as file:
         for line in file:
             # Check for GPS coordinates
@@ -46,30 +64,47 @@ def extract_gps_and_heading(log_file):
                 timestamp = heading_match.group(1)
                 heading = float(heading_match.group(2))
                 heading_dict[timestamp] = heading
-    
-    # Combine GPS coordinates with their corresponding headings
+            
+            # Check for sequence number
+            sequence_match = re.search(sequence_pattern, line)
+            if sequence_match:
+                timestamp = sequence_match.group(1)
+                sequence = int(sequence_match.group(2))
+                sequence_dict[timestamp] = sequence
+
+    # Combine GPS coordinates with their corresponding headings and sequence numbers
     result = []
     for timestamp, lat, lon in coordinates:
         heading = find_closest_heading(timestamp, heading_dict)
-        result.append((lat, lon, heading))
+        sequence = find_closest_sequence(timestamp, sequence_dict)  # Find closest sequence number
+        result.append((lat, lon, heading, sequence))
     
     return result
 
 def plot_coordinates(data):
     # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), height_ratios=[2, 1])
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), height_ratios=[2, 1])
     
     # Unzip the data
-    lats, lons, headings = zip(*data)
+    lats, lons, headings, sequences = zip(*data)
     
     # Convert lists to numpy arrays for easier slicing
     lats = np.array(lats)
     lons = np.array(lons)
     headings = np.array(headings)+100
+    #sequences = np.array(sequences, dtype=int)
     
     # Top subplot - GPS track and vectors
     ax1.plot(lons, lats, 'b-', alpha=0.5, linewidth=1)
-    
+
+    # Annotate unique sequence numbers
+    last_sequence = None
+    for i, seq in enumerate(sequences):
+        if seq != np.nan and seq != last_sequence:  # Only annotate if sequence is unique
+            print(seq)
+            ax1.text(lons[i], lats[i], str(int(seq)), fontsize=8, color='black', alpha=0.7)
+            last_sequence = seq
+
     # Calculate arrow components using heading angles for every 10th point
     arrow_length = 0.0001
     step = 5
@@ -160,7 +195,7 @@ def plot_angle_comparison(data):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
     # Unzip the data
-    lats, lons, headings = zip(*data)
+    lats, lons, headings, sequences = zip(*data)
     lats = np.array(lats)
     lons = np.array(lons)
     headings = np.array(headings)+100
@@ -236,7 +271,7 @@ def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=3
     Returns:
     - anomalies: List of indices where the anomaly occurs
     """
-    lats, lons, headings = zip(*data)
+    lats, lons, headings, sequences = zip(*data)
     lats = np.array(lats)
     lons = np.array(lons)
     headings = np.array(headings)
@@ -279,19 +314,19 @@ def main():
         print(f"Loading existing data from {csv_file}")
         df = pd.read_csv(csv_file)
         # Convert DataFrame back to the format needed for plotting
-        data = list(zip(df['Latitude'], df['Longitude'], df['Heading']))
+        data = list(zip(df['Latitude'], df['Longitude'], df['Heading'], df['Sequence']))
     else:
         print(f"Extracting GPS data from {log_file}")
         data = extract_gps_and_heading(log_file)
         # Save to DataFrame and CSV
-        df = pd.DataFrame(data, columns=['Latitude', 'Longitude', 'Heading'])
+        df = pd.DataFrame(data, columns=['Latitude', 'Longitude', 'Heading', 'Sequence'])
         df.to_csv(csv_file, index=False)
 
     print(f"Number of GPS coordinates: {len(data)}")
     print("\nFirst coordinate:")
-    print(f"Latitude: {data[0][0]}, Longitude: {data[0][1]}, Heading: {data[0][2]}")
+    print(f"Latitude: {data[0][0]}, Longitude: {data[0][1]}, Heading: {data[0][2]}, Sequence: {data[0][3]}")
     print("\nLast coordinate:")
-    print(f"Latitude: {data[-1][0]}, Longitude: {data[-1][1]}, Heading: {data[-1][2]}")
+    print(f"Latitude: {data[-1][0]}, Longitude: {data[-1][1]}, Heading: {data[-1][2]}, Sequence: {data[-1][3]}")
     
     plot_coordinates(data)
     plot_angle_comparison(data)
@@ -300,7 +335,7 @@ def main():
     anomalies = find_heading_anomalies(data)
     print(f"\nNumber of anomalies found: {len(anomalies)}")
     for idx in anomalies:
-        print(f"Anomaly at index {idx}: Latitude={data[idx][0]}, Longitude={data[idx][1]}, Heading={data[idx][2]}")
+        print(f"Anomaly at index {idx}: Latitude={data[idx][0]}, Longitude={data[idx][1]}, Heading={data[idx][2]}, Sequence={data[idx][3]}")
     
     print("\nDataFrame Summary:")
     print(df.describe())
