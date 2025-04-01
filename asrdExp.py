@@ -2,6 +2,8 @@ import re
 import matplotlib.pyplot as plt
 from datetime import datetime
 import numpy as np
+import pandas as pd
+import os
 
 def parse_timestamp(timestamp_str):
     return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
@@ -54,56 +56,201 @@ def extract_gps_and_heading(log_file):
     return result
 
 def plot_coordinates(data):
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), height_ratios=[2, 1])
+    
     # Unzip the data
     lats, lons, headings = zip(*data)
-    
-    plt.figure(figsize=(12, 8))
     
     # Convert lists to numpy arrays for easier slicing
     lats = np.array(lats)
     lons = np.array(lons)
     headings = np.array(headings)+100
     
-    # Plot all GPS points as a continuous track
-    plt.plot(lons, lats, 'b-', alpha=0.5, linewidth=1)
-    plt.scatter(lons, lats, c='black', s=20, alpha=0.5)
-
+    # Top subplot - GPS track and vectors
+    ax1.plot(lons, lats, 'b-', alpha=0.5, linewidth=1)
+    
     # Calculate arrow components using heading angles for every 10th point
     arrow_length = 0.0001
-    dx = arrow_length * np.sin(np.radians(headings[::10]))
-    dy = arrow_length * np.cos(np.radians(headings[::10]))
+    step = 5
     
-    # Add arrows for heading every 10th point
-    plt.quiver(lons[::10], lats[::10], dx, dy,
-              color='red',  # Single color for all arrows
-              scale=0.002,
-              width=0.003,
-              headwidth=4,
-              headlength=5,
-              headaxislength=4.5)
+    # Heading vectors (red)
+    dx_heading = arrow_length * np.sin(np.radians(headings[::step]))
+    dy_heading = arrow_length * np.cos(np.radians(headings[::step]))
+    
+    # Track vectors (green)
+    track_angles = []
+    valid_indices = []
+    angle_differences = []
+    
+    for i in range(0, len(lats)-step, step):
+        angle = calculate_track_angle(lats[i], lons[i], lats[i+step], lons[i+step])
+        if angle is not None:
+            track_angles.append(angle)
+            valid_indices.append(i)
+            # Calculate angle difference
+            heading_angle = headings[i]
+            diff = (angle - heading_angle + 180) % 360 - 180  # Normalize to [-180, 180]
+            angle_differences.append(diff)
+    
+    if track_angles:
+        track_angles = np.array(track_angles)
+        dx_track = arrow_length * np.sin(np.radians(track_angles))
+        dy_track = arrow_length * np.cos(np.radians(track_angles))
+        
+        ax1.quiver(lons[valid_indices], lats[valid_indices], dx_track, dy_track,
+                  color='green', scale=0.002, width=0.003,
+                  headwidth=4, headlength=5, headaxislength=4.5,
+                  label='Track Vector')
+    
+    # Plot heading vectors
+    ax1.quiver(lons[::step], lats[::step], dx_heading, dy_heading,
+              color='red', scale=0.002, width=0.003,
+              headwidth=4, headlength=5, headaxislength=4.5,
+              label='Heading Vector')
     
     # Plot start and end points
-    plt.plot(lons[0], lats[0], 'go', label='Start', markersize=10)
-    plt.plot(lons[-1], lats[-1], 'ro', label='End', markersize=10)
+    ax1.plot(lons[0], lats[0], 'go', label='Start', markersize=10)
+    ax1.plot(lons[-1], lats[-1], 'ro', label='End', markersize=10)
     
-    plt.xlabel('Longitude')
-    plt.ylabel('Latitude')
-    plt.title('GPS Coordinates Track with Heading Vectors')
-    plt.grid(True)
-    plt.legend()
+    ax1.set_xlabel('Longitude')
+    ax1.set_ylabel('Latitude')
+    ax1.set_title('GPS Coordinates Track with Heading and Track Vectors')
+    ax1.grid(True)
+    ax1.legend()
+    
+    # Bottom subplot - Angle differences
+    if angle_differences:
+        ax2.plot(valid_indices, angle_differences, 'b.-', label='Angle Difference')
+        ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        ax2.set_xlabel('Point Index (every 10 points)')
+        ax2.set_ylabel('Angle Difference (degrees)')
+        ax2.set_title('Track Angle vs Heading Angle Difference')
+        ax2.grid(True)
+        ax2.legend()
+        
+        # Print statistics
+        mean_diff = np.mean(angle_differences)
+        std_diff = np.std(angle_differences)
+        ax2.text(0.02, 0.95, 
+                f'Mean diff: {mean_diff:.1f}°\nStd dev: {std_diff:.1f}°', 
+                transform=ax2.transAxes,
+                bbox=dict(facecolor='white', alpha=0.8))
+    
+    plt.tight_layout()
+    plt.show()
+
+def calculate_track_angle(lat1, lon1, lat2, lon2):
+    """
+    Calculate bearing angle between two GPS points.
+    Returns None if points are the same (stationary).
+    """
+    dy = lat2 - lat1
+    dx = lon2 - lon1
+    
+    # Check if points are the same (within small threshold for floating point comparison)
+    if abs(dx) < 1e-10 and abs(dy) < 1e-10:
+        return None
+        
+    angle = np.degrees(np.arctan2(dx, dy))
+    return (angle + 360) % 360
+
+def plot_angle_comparison(data):
+    # Create figure with two subplots side by side
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Unzip the data
+    lats, lons, headings = zip(*data)
+    lats = np.array(lats)
+    lons = np.array(lons)
+    headings = np.array(headings)+100
+    
+    # Calculate track angles and differences
+    track_angles = []
+    indices = []
+    angle_diffs = []
+    valid_lats = []
+    valid_lons = []
+    
+    step = 10
+    for i in range(0, len(lats)-step, step):
+        track_angle = calculate_track_angle(lats[i], lons[i], lats[i+step], lons[i+step])
+        if track_angle is not None:
+            track_angles.append(track_angle)
+            indices.append(i)
+            heading_angle = headings[i]
+            diff = (track_angle - heading_angle + 180) % 360 - 180
+            angle_diffs.append(diff)
+            valid_lats.append(lats[i])
+            valid_lons.append(lons[i])
+    
+    # Left subplot - GPS track with color-coded differences
+    scatter = ax1.scatter(valid_lons, valid_lats, 
+                         c=angle_diffs, 
+                         cmap='RdYlBu', 
+                         s=100,
+                         vmin=-180, 
+                         vmax=180)
+    ax1.plot(lons, lats, 'k-', alpha=0.3, linewidth=1)
+    plt.colorbar(scatter, ax=ax1, label='Angle Difference (degrees)')
+    
+    # Add start and end points
+    ax1.plot(lons[0], lats[0], 'go', label='Start', markersize=10)
+    ax1.plot(lons[-1], lats[-1], 'ro', label='End', markersize=10)
+    
+    ax1.set_xlabel('Longitude')
+    ax1.set_ylabel('Latitude')
+    ax1.set_title('GPS Track with Angle Differences')
+    ax1.grid(True)
+    ax1.legend()
+    
+    # Right subplot - Angle differences over time
+    ax2.plot(indices, angle_diffs, 'b.-')
+    ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+    ax2.set_xlabel('Point Index (every 10 points)')
+    ax2.set_ylabel('Angle Difference (degrees)')
+    ax2.set_title('Track vs Heading Angle Difference')
+    ax2.grid(True)
+    
+    # Add statistics
+    mean_diff = np.mean(angle_diffs)
+    std_diff = np.std(angle_diffs)
+    ax2.text(0.02, 0.95, 
+            f'Mean diff: {mean_diff:.1f}°\nStd dev: {std_diff:.1f}°',
+            transform=ax2.transAxes,
+            bbox=dict(facecolor='white', alpha=0.8))
+    
+    plt.tight_layout()
     plt.show()
 
 def main():
     log_file = 'system_20250321_115636.log'
-    data = extract_gps_and_heading(log_file)
+    csv_file = 'gps_data.csv'
     
-    print(f"Number of GPS coordinates extracted: {len(data)}")
+    # Check if CSV file exists
+    if os.path.exists(csv_file):
+        print(f"Loading existing data from {csv_file}")
+        df = pd.read_csv(csv_file)
+        # Convert DataFrame back to the format needed for plotting
+        data = list(zip(df['Latitude'], df['Longitude'], df['Heading']))
+    else:
+        print(f"Extracting GPS data from {log_file}")
+        data = extract_gps_and_heading(log_file)
+        # Save to DataFrame and CSV
+        df = pd.DataFrame(data, columns=['Latitude', 'Longitude', 'Heading'])
+        df.to_csv(csv_file, index=False)
+
+    print(f"Number of GPS coordinates: {len(data)}")
     print("\nFirst coordinate:")
     print(f"Latitude: {data[0][0]}, Longitude: {data[0][1]}, Heading: {data[0][2]}")
     print("\nLast coordinate:")
     print(f"Latitude: {data[-1][0]}, Longitude: {data[-1][1]}, Heading: {data[-1][2]}")
     
     plot_coordinates(data)
+    plot_angle_comparison(data)
+    print("\nDataFrame Summary:")
+    print(df.describe())
+
 
 if __name__ == "__main__":
     main()

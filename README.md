@@ -3,6 +3,9 @@
 Note
 The region of sky is ~1065 in radius.
 
+# Lens
+https://commonlands.com/products/m12-fisheye-lens-cil220?variant=39948508430454
+
 # AllSkyCam Camera Acquisition Script
 
 This script is designed to control an IDS Peak camera, acquire images, and optionally perform analysis on the acquired images. The images are saved in FITS format with relevant metadata.
