@@ -223,6 +223,53 @@ def plot_angle_comparison(data):
     plt.tight_layout()
     plt.show()
 
+def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=30):
+    """
+    Identify cases where the heading vector has a large angle difference
+    compared to the track vector, while the track vector remains relatively constant.
+    
+    Parameters:
+    - data: List of (Latitude, Longitude, Heading) tuples
+    - track_threshold: Maximum allowed variation in track vector (degrees)
+    - angle_difference_threshold: Minimum required angle difference between track and heading vectors (degrees)
+    
+    Returns:
+    - anomalies: List of indices where the anomaly occurs
+    """
+    lats, lons, headings = zip(*data)
+    lats = np.array(lats)
+    lons = np.array(lons)
+    headings = np.array(headings)
+    
+    track_angles = []
+    track_variations = []
+    angle_differences = []
+    anomalies = []
+    
+    step = 10
+    for i in range(0, len(lats) - step, step):
+        # Calculate track angle
+        track_angle = calculate_track_angle(lats[i], lons[i], lats[i + step], lons[i + step])
+        if track_angle is not None:
+            track_angles.append(track_angle)
+            
+            # Calculate track vector variation
+            if len(track_angles) > 1:
+                track_variation = abs(track_angles[-1] - track_angles[-2])
+                track_variation = (track_variation + 180) % 360 - 180  # Normalize to [-180, 180]
+                track_variations.append(abs(track_variation))
+                
+                # Calculate angle difference between track and heading vectors
+                heading_angle = headings[i]+100
+                angle_difference = (track_angle - heading_angle + 180) % 360 - 180  # Normalize to [-180, 180]
+                angle_differences.append(abs(angle_difference))
+                
+                # Check for anomalies
+                if track_variation < track_threshold and abs(angle_difference) > angle_difference_threshold:
+                    anomalies.append(i)
+    
+    return anomalies
+
 def main():
     log_file = 'system_20250321_115636.log'
     csv_file = 'gps_data.csv'
@@ -248,6 +295,13 @@ def main():
     
     plot_coordinates(data)
     plot_angle_comparison(data)
+    
+    # Find anomalies
+    anomalies = find_heading_anomalies(data)
+    print(f"\nNumber of anomalies found: {len(anomalies)}")
+    for idx in anomalies:
+        print(f"Anomaly at index {idx}: Latitude={data[idx][0]}, Longitude={data[idx][1]}, Heading={data[idx][2]}")
+    
     print("\nDataFrame Summary:")
     print(df.describe())
 
