@@ -3,6 +3,20 @@ import logging
 import os
 from datetime import datetime
 
+class SingleDecimalFormatter(logging.Formatter):
+    """Custom formatter that formats datetime with a single decimal place for seconds."""
+    def formatTime(self, record, datefmt=None):
+        created_time = datetime.fromtimestamp(record.created)
+        if datefmt:
+            # Format with full microseconds
+            s = created_time.strftime(datefmt)
+            # Extract only the first decimal place
+            if '.' in s:
+                parts = s.split('.')
+                if len(parts) == 2 and len(parts[1]) >= 1:
+                    return f"{parts[0]}.{parts[1][0]}"
+        return created_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:21]  # Default with single decimal
+
 def setup_logging():
     # Create logs directory
     os.makedirs('logs', exist_ok=True)
@@ -14,10 +28,10 @@ def setup_logging():
     # Clear any existing handlers
     root_logger.handlers = []
     
-    # Common formatter
-    formatter = logging.Formatter(
+    # Use custom formatter with 0.1 second precision
+    formatter = SingleDecimalFormatter(
         '%(asctime)s - %(levelname)s - %(name)s - %(message)s - [Line: %(lineno)d]',
-        datefmt='%Y-%m-%d %H:%M:%S,%f'[:-3]
+        datefmt='%Y-%m-%d %H:%M:%S.%f'
     )
     
     # File handler
