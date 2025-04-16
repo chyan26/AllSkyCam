@@ -6,11 +6,7 @@ import pandas as pd
 import os
 
 def parse_timestamp(timestamp_str):
-    """Parse timestamp with or without decimal seconds"""
-    if '.' in timestamp_str:
-        return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
-    else:
-        return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+    return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
 
 def find_closest_heading(timestamp_str, heading_dict):
     target_time = parse_timestamp(timestamp_str)
@@ -42,12 +38,11 @@ def find_closest_sequence(timestamp_str, sequence_dict):
             closest_time = time_str
     
     return sequence_dict.get(closest_time) if closest_time else None
-
 def extract_gps_and_heading(log_file):
-    # Updated regular expressions to match timestamps with 0.1 second precision
-    gps_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
-    heading_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Heading difference = ([\d.-]+)'
-    sequence_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Saved FITS file: .*_(\d+)\.fits'
+    # Regular expressions for GPS, heading, and sequence number
+    gps_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
+    heading_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Heading difference = ([\d.-]+)'
+    sequence_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - INFO - idsExposure\.py - Saved FITS file: .*_(\d+)\.fits'
 
     coordinates = []  # List to store (timestamp, lat, lon) tuples
     heading_dict = {}  # Dictionary to store timestamp: heading pairs
@@ -310,49 +305,8 @@ def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=3
     
     return anomalies
 
-def test_regex_patterns():
-    """Test regex patterns against sample log lines"""
-    
-    # Sample log lines
-    sample_logs = [
-        "2025-04-14 15:04:09.3 - INFO - idsExposure.py - Updated GPS location: Latitude=25.02113, Longitude=121.5358375, Time=07:04:05, Satellites=12 - [Line: 127]",
-        "2025-04-14 15:04:09.3 - INFO - idsExposure.py - Heading difference = 0.8149238740392093 - [Line: 314]",
-        "2025-04-14 15:04:09.3 - INFO - idsExposure.py - Saved FITS file: AllSky_20250414_150409_133.fits - [Line: 220]"
-    ]
-    
-    # Define regex patterns
-    gps_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
-    heading_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Heading difference = ([\d.-]+)'
-    sequence_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d) - INFO - idsExposure\.py - Saved FITS file: .*_(\d+)\.fits'
-    
-    # Test each pattern
-    print("Testing GPS pattern...")
-    match = re.search(gps_pattern, sample_logs[0])
-    if match:
-        print(f"  Timestamp: {match.group(1)}")
-        print(f"  Latitude: {match.group(2)}")
-        print(f"  Longitude: {match.group(3)}")
-    else:
-        print("  No match found!")
-    
-    print("\nTesting heading pattern...")
-    match = re.search(heading_pattern, sample_logs[1])
-    if match:
-        print(f"  Timestamp: {match.group(1)}")
-        print(f"  Heading: {match.group(2)}")
-    else:
-        print("  No match found!")
-    
-    print("\nTesting sequence pattern...")
-    match = re.search(sequence_pattern, sample_logs[2])
-    if match:
-        print(f"  Timestamp: {match.group(1)}")
-        print(f"  Sequence: {match.group(2)}")
-    else:
-        print("  No match found!")
-
 def main():
-    log_file = 'logs/system_20250414_150351.log'
+    log_file = 'system_20250321_115636.log'
     csv_file = 'gps_data.csv'
     
     # Check if CSV file exists
@@ -388,5 +342,4 @@ def main():
 
 
 if __name__ == "__main__":
-    #test_regex_patterns()
     main()
