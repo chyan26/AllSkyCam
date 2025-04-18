@@ -34,6 +34,7 @@ import os
 from datetime import datetime
 from detectSun import ImageProcessor # Assuming this class is correctly defined
 from ubloxReader import GPSReader # Assuming this class is correctly defined
+from gpsHandler import GPSHandler # Import our new GPS Handler class
 import time
 import threading
 import math
@@ -111,32 +112,28 @@ class CameraAcquisition:
     is handled externally.
     """
     def __init__(self, exposure_time_ms=0.02, num_buffers=None,
-                 output_dir="output", gps_update_frequency=1):
+                 output_dir="output"):
 
         self.exposure_time_ms = exposure_time_ms
         self.num_buffers = num_buffers
         self.output_dir = output_dir
-        self.gps_update_frequency = gps_update_frequency
 
         self.device = None
         self.data_stream = None
         self.remote_nodemap = None
         self.is_acquiring = False # Flag to track acquisition state
 
-        # --- State variables for metadata (updated externally or by GPS thread) ---
-        self.init_latitute = None
-        self.init_longitude = None
+        # --- State variables for metadata (updated externally) ---
+        # Note: GPS coordinates are now handled by GPSHandler
+        self.init_latitute = None  # Will be populated from GPSHandler
+        self.init_longitude = None # Will be populated from GPSHandler
         self.measured_alt = None
         self.measured_azi = None
         self.measured_lat = None
         self.measured_lon = None
         self.head_diff = None
-        self.gpsHeadingDiff = None # Note: Calculation logic removed, needs external handling if desired
+        self.gpsHeadingDiff = None
         # --- End State variables ---
-
-        self.gps_thread = None
-        self.gps_running = False
-        # self.gps_records = [] # Removed, complex heading calc needs external logic
 
         # Thread synchronization for state variables
         self.state_lock = threading.RLock()
@@ -151,60 +148,8 @@ class CameraAcquisition:
         except:
             return "Unknown"
 
-    def start_gps_thread(self):
-        """Starts a thread to update GPS location at a specified frequency."""
-        if not self.gps_running:
-            self.gps_running = True
-            self.gps_thread = threading.Thread(target=self.update_gps_location, daemon=True)
-            self.gps_thread.start()
-            logger.info("GPS update thread started.")
-        else:
-            logger.warning("GPS thread already running.")
-
-    def stop_gps_thread(self):
-        """Stops the GPS update thread."""
-        if self.gps_running:
-            self.gps_running = False
-            if self.gps_thread and self.gps_thread.is_alive():
-                logger.info("Waiting for GPS thread to stop...")
-                self.gps_thread.join(timeout=2) # Add timeout
-                if self.gps_thread.is_alive():
-                    logger.warning("GPS thread did not stop within timeout.")
-            self.gps_thread = None
-            logger.info("GPS update thread stopped.")
-        else:
-            logger.info("GPS thread was not running.")
-
-    def update_gps_location(self):
-        """Continuously updates the GPS location (runs in a separate thread)."""
-        gps = None
-        try:
-            gps = GPSReader(system='GNSS').connect()
-            logger.info("GPS Reader connected in thread.")
-            while self.gps_running:
-                coords = gps.get_coordinates()
-                if coords:
-                    lat, lon, gps_time, sats = coords
-                    
-                    # Basic validation of GPS coordinates
-                    if -90 <= lat <= 90 and -180 <= lon <= 180:
-                        # Thread-safe update of coordinates with lock
-                        with self.state_lock:
-                            self.init_latitute = lat
-                            self.init_longitude = lon
-                        logger.info(f"Updated GPS location: Latitude={lat:.6f}, Longitude={lon:.6f}, Time={gps_time}, Satellites={sats}")
-                    else:
-                        logger.warning(f"Received invalid GPS coordinates: {lat}, {lon}")
-                else:
-                    logger.debug("No GPS fix obtained in this cycle.")
-                time.sleep(self.gps_update_frequency)
-        except Exception as e:
-            logger.error(f"Error in GPS update thread: {e}", exc_info=True)
-        finally:
-            if gps:
-                gps.disconnect()
-                logger.info("GPS Reader disconnected in thread.")
-            logger.info("GPS update loop finished.")
+    # Remove GPS-related methods
+    # start_gps_thread, stop_gps_thread, update_gps_location are removed
 
     def setup_device(self):
         """Initializes the library and opens the first available device."""
@@ -338,7 +283,7 @@ class CameraAcquisition:
             return False
 
     def start_acquisition(self):
-        """Starts the camera acquisition process and the GPS thread."""
+        """Starts the camera acquisition process."""
         if not self.data_stream or not self.remote_nodemap:
             logger.error("Data stream or nodemap not available. Cannot start acquisition.")
             return False
@@ -358,7 +303,6 @@ class CameraAcquisition:
             self.remote_nodemap.FindNode("AcquisitionStart").WaitUntilDone(1000)  # Wait briefly
             self.is_acquiring = True
             logger.info("Camera acquisition started.")
-            self.start_gps_thread()  # Start GPS when acquisition starts
             return True
         except ids_peak.Exception as e:
              logger.error(f"IDS Peak Exception starting acquisition: {e}")
@@ -381,10 +325,7 @@ class CameraAcquisition:
             return False
 
     def stop_acquisition(self):
-        """Stops the camera acquisition process and the GPS thread."""
-        # Stop GPS thread first
-        self.stop_gps_thread()
-
+        """Stops the camera acquisition process."""
         if not self.is_acquiring:
             logger.info("Acquisition not running or already stopped.")
             return True # Considered success if not running
@@ -500,10 +441,9 @@ class CameraAcquisition:
             logger.error(f"General error queueing buffer: {e}")
             return False
 
-    def save_fits(self, image_data, exposure_num):
+    def save_fits(self, image_data, exposure_num, gps_lat=None, gps_lon=None):
         """
-        Save the image data to a FITS file with metadata read from
-        the instance's current state variables.
+        Save the image data to a FITS file with metadata.
         """
         if image_data is None:
             logger.error("Cannot save FITS, image data is None.")
@@ -525,11 +465,18 @@ class CameraAcquisition:
 
             # Thread-safe access to state variables
             with self.state_lock:
-                # Add metadata stored in the class attributes
-                if self.init_latitute is not None:
+                # Prefer externally provided GPS data
+                if gps_lat is not None:
+                    hdr['GPS_LAT'] = (gps_lat, 'GPS latitude at capture time')
+                elif self.init_latitute is not None:
                     hdr['GPS_LAT'] = (self.init_latitute, 'Last known GPS latitude')
-                if self.init_longitude is not None:
+                    
+                if gps_lon is not None:
+                    hdr['GPS_LON'] = (gps_lon, 'GPS longitude at capture time')
+                elif self.init_longitude is not None:
                     hdr['GPS_LON'] = (self.init_longitude, 'Last known GPS longitude')
+                
+                # Add other metadata stored in the class attributes
                 if self.measured_lat is not None:
                     hdr['MEAS_LAT'] = (self.measured_lat, 'Calculated Latitude (from Sun)')
                 if self.measured_lon is not None:
@@ -554,13 +501,10 @@ class CameraAcquisition:
         """Cleans up resources: stops acquisition, revokes buffers, closes stream/device/library."""
         logger.info("Starting camera cleanup...")
 
-        # 1. Stop acquisition if running (also stops GPS thread)
+        # 1. Stop acquisition if running
         if self.is_acquiring:
             logger.info("Stopping acquisition as part of cleanup...")
             self.stop_acquisition()
-        else:
-            # Ensure GPS thread is stopped even if acquisition wasn't running
-            self.stop_gps_thread()
 
         # Ensure acquisition is actually stopped before flushing
         if self.is_acquiring:
@@ -688,7 +632,7 @@ class ExposureSequence:
     Keeps the acquisition loop separate from the camera hardware interaction.
     """
     def __init__(self, camera, num_images=10, sleep_time=0.1, 
-                 perform_analysis=False, visualizer=None):
+                 perform_analysis=False, visualizer=None, gps_handler=None):
         """
         Initialize an exposure sequence controller.
         
@@ -698,12 +642,14 @@ class ExposureSequence:
             sleep_time: Time to sleep between exposures (seconds)
             perform_analysis: Whether to analyze images for sun position
             visualizer: HeadingVisualizer instance for displaying heading
+            gps_handler: GPSHandler instance for GPS data
         """
         self.camera = camera
         self.num_images = num_images
         self.sleep_time = sleep_time
         self.perform_analysis = perform_analysis
         self.visualizer = visualizer
+        self.gps_handler = gps_handler
         
         # Analysis state variables
         self.deltaAlt = None
@@ -733,7 +679,30 @@ class ExposureSequence:
             if not self.camera.start_acquisition():
                 logger.error("Failed to start acquisition")
                 return False
-                
+            
+            # ADDED: If we're doing analysis, wait for first GPS fix from GPSHandler
+            if self.perform_analysis and self.gps_handler:
+                logger.info("Waiting for initial GPS fix...")
+                gps_location = self.gps_handler.wait_for_fix(timeout=10)
+                if gps_location:
+                    lat, lon = gps_location
+                    logger.info(f"Got initial GPS fix: Lat={lat:.6f}, Lon={lon:.6f}")
+                    
+                    # Set initial coordinates in camera for metadata
+                    with self.camera.state_lock:
+                        self.camera.init_latitute = lat
+                        self.camera.init_longitude = lon
+                else:
+                    # Use default coordinates from GPS handler if available
+                    if self.gps_handler.default_lat is not None and self.gps_handler.default_lon is not None:
+                        lat, lon = self.gps_handler.default_lat, self.gps_handler.default_lon
+                        logger.info(f"Using default coordinates: Lat={lat}, Lon={lon}")
+                        with self.camera.state_lock:
+                            self.camera.init_latitute = lat
+                            self.camera.init_longitude = lon
+                    else:
+                        logger.warning("Could not get GPS fix within timeout. Analysis may be limited.")
+            
             # Main exposure loop
             for i in range(self.num_images):
                 # Check if we should stop (from external signal)
@@ -897,7 +866,14 @@ def parse_args():
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform sun analysis on the images")
-    parser.add_argument("--gps_update_frequency", type=float, default=2, help="Frequency of GPS updates in seconds")
+    parser.add_argument("--gps_update_frequency", type=float, default=10, help="Frequency of GPS updates in Hz")
+    parser.add_argument("--default_lat", type=float, default=None, 
+                        help="Default latitude to use if GPS not available")
+    parser.add_argument("--default_lon", type=float, default=None,
+                        help="Default longitude to use if GPS not available")
+    # New argument
+    parser.add_argument("--log_gps_updates", action='store_true', default=True, 
+                        help="Log all GPS updates to the system log")
     return parser.parse_args()
 
 
@@ -909,13 +885,21 @@ def main():
     # Initialize Tkinter and HeadingVisualizer in the main thread
     root = tk.Tk()
     visualizer = HeadingVisualizer(root)
+    
+    # Create and start GPS handler (runs at specified frequency, logs to system)
+    gps_handler = GPSHandler(
+        update_frequency_hz=args.gps_update_frequency,
+        default_lat=args.default_lat,
+        default_lon=args.default_lon,
+        log_to_system=args.log_gps_updates
+    )
+    gps_handler.start()
 
     # Create CameraAcquisition instance (handles hardware)
     camera = CameraAcquisition(
         exposure_time_ms=args.exposure,
         num_buffers=args.buffers,
-        output_dir=args.output,
-        gps_update_frequency=args.gps_update_frequency
+        output_dir=args.output
     )
     
     # Create ExposureSequence instance (handles acquisition loop)
@@ -924,7 +908,8 @@ def main():
         num_images=args.images,
         sleep_time=args.sleep,
         perform_analysis=args.perform_analysis,
-        visualizer=visualizer
+        visualizer=visualizer,
+        gps_handler=gps_handler  # Pass GPS handler to sequence
     )
 
     # --- Run Acquisition in Thread ---
@@ -999,6 +984,11 @@ def main():
             logger.info("Waiting for Tkinter resources to clean up...")
             state.tk_ready_to_close.wait(timeout=5)
 
+        # Stop GPS handler
+        if gps_handler:
+            logger.info("Stopping GPS handler...")
+            gps_handler.stop()
+
         # Final camera cleanup
         logger.info("Performing final camera cleanup...")
         camera.cleanup()
@@ -1007,6 +997,7 @@ def main():
         camera = None
         sequence = None
         visualizer = None
+        gps_handler = None
         root = None
         gc.collect()
 
