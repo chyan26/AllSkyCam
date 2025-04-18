@@ -384,7 +384,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
     parser.add_argument("--images", type=int, default=800, help="Number of images to acquire")
-    parser.add_argument("--sleep", type=int, default=1, help="time of seconds between exposures")
+    parser.add_argument("--sleep", type=int, default=0, help="time of seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform analysis on the images")
