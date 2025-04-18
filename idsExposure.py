@@ -871,7 +871,6 @@ def parse_args():
                         help="Default latitude to use if GPS not available")
     parser.add_argument("--default_lon", type=float, default=None,
                         help="Default longitude to use if GPS not available")
-    # New argument
     parser.add_argument("--log_gps_updates", action='store_true', default=True, 
                         help="Log all GPS updates to the system log")
     return parser.parse_args()
