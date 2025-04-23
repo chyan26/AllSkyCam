@@ -174,6 +174,8 @@ class GPSReader:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
 
+
+
 def main():
     gps = GPSReader(system='GNSS').connect()
     try:
