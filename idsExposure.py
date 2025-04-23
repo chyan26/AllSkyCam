@@ -497,6 +497,108 @@ class CameraAcquisition:
             logger.error(f"Failed to save FITS file: {log_filepath}, error: {e}", exc_info=True)
             return False # Indicate failure
 
+    def save_jpeg(self, image_data, exposure_num, edges=None, sun_location=None):
+        """
+        Save the image data to a JPEG file with optional circle overlay and sun location.
+        
+        Args:
+            image_data: NumPy array containing the image data
+            exposure_num: Exposure sequence number
+            edges: Optional edge data containing circle parameters [x, y, radius]
+            sun_location: Optional sun location (x, y, r) to mark with an X
+        
+        Returns:
+            bool: True if save was successful, False otherwise
+        """
+        if image_data is None:
+            logger.error("Cannot save JPEG, image data is None.")
+            return False
+
+        filepath = None
+        try:
+            import cv2  # Import here to avoid dependency if not used
+            
+            # Create output directory if needed
+            jpeg_dir = os.path.join(self.output_dir, "jpeg")
+            os.makedirs(jpeg_dir, exist_ok=True)
+            
+            # Create filename
+            now = datetime.now()
+            filename = now.strftime(f"image_%Y%m%d_%H%M%S_{exposure_num:03d}.jpg")
+            filepath = os.path.join(jpeg_dir, filename)
+            
+            # Normalize and convert to 8-bit for display
+            img_min = np.min(image_data)
+            img_max = np.max(image_data)
+            img_normalized = np.clip((image_data - img_min) / (img_max - img_min) * 255, 0, 255).astype(np.uint8)
+            
+            # Create a black and white image (no colormap)
+            # Convert to 3-channel so we can draw colored circles
+            img_bw = cv2.cvtColor(img_normalized, cv2.COLOR_GRAY2BGR)
+            
+            # Draw circle if edges are provided
+            if edges is not None and len(edges) > 0:
+                # Extract circle parameters from edges
+                try:
+                    x, y, radius = int(edges[0, 0]), int(edges[0, 1]), int(edges[0, 2])
+                    
+                    # Transform coordinates to account for flipping done in analysis
+                    # The edges were detected on flipped image (flip up-down and left-right)
+                    height, width = img_bw.shape[:2]
+                    transformed_x = width - 1 - x
+                    transformed_y = height - 1 - y
+                    
+                    # Draw circle on the image
+                    cv2.circle(img_bw, (transformed_x, transformed_y), radius, (0, 255, 255), 2)  # Yellow circle
+                    # Draw center point
+                    cv2.circle(img_bw, (transformed_x, transformed_y), 5, (255, 0, 0), -1)  # Blue center point
+                    
+                    logger.debug(f"Drew circle at ({transformed_x}, {transformed_y}) with radius {radius} on JPEG")
+                    logger.debug(f"Original detected circle was at ({x}, {y})")
+                except Exception as e:
+                    logger.warning(f"Could not draw circle on image: {e}")
+            
+            # Draw sun location if provided
+            if sun_location is not None and len(sun_location) >= 2:
+                try:
+                    sun_x, sun_y = int(sun_location[0]), int(sun_location[1])
+                    
+                    # Transform coordinates for sun position as well
+                    height, width = img_bw.shape[:2]
+                    transformed_sun_x = width - 1 - sun_x
+                    transformed_sun_y = height - 1 - sun_y
+                    
+                    # Draw an X mark at the sun position
+                    x_size = 15  # Size of the X mark
+                    thickness = 3  # Line thickness
+                    color = (0, 0, 255)  # Red color in BGR
+                    
+                    # Draw the X
+                    cv2.line(img_bw, 
+                              (transformed_sun_x - x_size, transformed_sun_y - x_size),
+                              (transformed_sun_x + x_size, transformed_sun_y + x_size),
+                              color, thickness)
+                    cv2.line(img_bw, 
+                              (transformed_sun_x - x_size, transformed_sun_y + x_size),
+                              (transformed_sun_x + x_size, transformed_sun_y - x_size),
+                              color, thickness)
+                    
+                    logger.debug(f"Drew X mark at sun location ({transformed_sun_x}, {transformed_sun_y}) on JPEG")
+                    logger.debug(f"Original sun location was at ({sun_x}, {sun_y})")
+                except Exception as e:
+                    logger.warning(f"Could not draw sun location on image: {e}")
+            
+            # Save the image
+            cv2.imwrite(filepath, img_bw)
+            logger.info(f"Saved JPEG file: {filepath}")
+            return True
+            
+        except Exception as e:
+            log_filepath = filepath if filepath else "unknown path"
+            logger.error(f"Failed to save JPEG file: {log_filepath}, error: {e}", exc_info=True)
+            return False
+    
+
     def cleanup(self):
         """Cleans up resources: stops acquisition, revokes buffers, closes stream/device/library."""
         logger.info("Starting camera cleanup...")
@@ -652,6 +754,7 @@ class ExposureSequence:
         self.gps_handler = gps_handler
         
         # Analysis state variables
+        self.sunLocation = None
         self.deltaAlt = None
         self.deltaAzi = None
         self.edges = None
@@ -668,6 +771,8 @@ class ExposureSequence:
         logger.info(f"Starting exposure sequence: {self.num_images} images")
         self.is_running = True
         is_first_image = True
+
+        
         
         try:
             # Initialize camera if not already done
@@ -731,6 +836,9 @@ class ExposureSequence:
                 # Save the image
                 self.camera.save_fits(image_data, i + 1)
                 
+                # Save JPEG with optional edge overlay
+                self.camera.save_jpeg(image_data, i + 1, self.edges,self.sunLocation)
+
                 # Queue buffer back
                 self.camera.queue_buffer(buffer)
                 
@@ -774,9 +882,12 @@ class ExposureSequence:
                 processor.sunDetectionSEP(display=False)
                 detected_edges = processor.edgeDetection(display=False)
                 
+                logger.info(f"Detected edges: {detected_edges}")
+
                 if processor.sunLocation is not None and detected_edges is not None:
                     self.edges = detected_edges
                     sun_x, sun_y, _ = processor.sunLocation
+                    self.sunLocation = (sun_x, sun_y)
                     allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
                     
                     # Calculate measured sun position
@@ -808,7 +919,7 @@ class ExposureSequence:
                 if processor.sunLocation is not None:
                     sun_x, sun_y, _ = processor.sunLocation
                     allsky_x, allsky_y, allsky_r = self.edges[0,0], self.edges[0,1], self.edges[0,2]
-                    
+                    self.sunLocation = (sun_x, sun_y)
                     processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
                     logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
                     
