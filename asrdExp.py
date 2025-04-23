@@ -66,7 +66,7 @@ def extract_gps_and_heading(log_file):
     )
     # Match the specific log message for saving FITS files (to get sequence number)
     sequence_pattern = re.compile(
-        timestamp_pattern + r' - INFO - idsExposure.py - Saved FITS file: .*_(\d{2})\.fits' # Assuming 2-digit sequence number based on idsExposure.py {exposure_num:02d}
+        timestamp_pattern + r' - INFO - idsExposure.py - Saved FITS file: .*_(\d{3})\.fits' # Assuming 2-digit sequence number based on idsExposure.py {exposure_num:02d}
     )
     # --- Alternative sequence pattern if it might be more digits ---
     # sequence_pattern = re.compile(
@@ -183,7 +183,7 @@ def plot_coordinates(data):
     sequences = np.array([s if s is not None else np.nan for s in sequences], dtype=float) # Keep as float for NaN
 
     # Apply heading offset if needed (e.g., +100 degrees as in original)
-    heading_offset = 10
+    heading_offset = 0
     headings_adjusted = headings + heading_offset # NaN values will propagate
 
     # Top subplot - GPS track and vectors
@@ -462,7 +462,7 @@ def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=3
 
 def main():
     # --- Configuration ---
-    log_file = 'logs/system_20250416_152152.log' # Make sure this path is correct
+    log_file = 'logs/system_20250422_151314.log' # Make sure this path is correct
     csv_file = 'gps_data_extracted.csv' # Use a different name to avoid confusion
     force_reextract = False # Set to True to ignore existing CSV and re-parse log
     # --- End Configuration ---
