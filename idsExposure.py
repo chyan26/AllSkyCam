@@ -977,7 +977,15 @@ def parse_args():
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate (default: minimum required)")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform sun analysis on the images")
-    parser.add_argument("--gps_update_frequency", type=float, default=2, help="Frequency of GPS updates in seconds")
+    parser.add_argument("--gps_update_frequency", type=float, default=10, help="Frequency of GPS updates in seconds")
+    parser.add_argument("--default_lat", type=float, default=None, 
+                        help="Default latitude to use if GPS not available")
+    parser.add_argument("--default_lon", type=float, default=None,
+                        help="Default longitude to use if GPS not available")
+    parser.add_argument("--log_gps_updates", action='store_true', default=True, 
+                        help="Log all GPS updates to the system log")
+    return parser.parse_args()
+
     return parser.parse_args()
 
 
