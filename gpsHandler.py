@@ -4,6 +4,7 @@ import logging
 import math
 from collections import deque
 from ubloxReader import GPSReader
+import datetime
 
 logger = logging.getLogger("gps_handler")
 system_logger = logging.getLogger("idsExposure.py")  # Use the main system logger
@@ -51,7 +52,9 @@ class GPSHandler:
         
         # Events
         self.first_fix_event = threading.Event()
-    
+
+        self.speed = 0  # Speed in m/s
+        self.speed_callback = None  # Callback for speed updates
     def start(self):
         """Start the GPS update thread."""
         if self.running:
@@ -150,56 +153,64 @@ class GPSHandler:
             
             with self.lock:
                 self.connected = False
-    
+                
+    def set_speed_callback(self, callback):
+        """Set a callback function to be called when speed is updated."""
+        with self.lock:
+            self.speed_callback = callback
+
     def _calculate_heading(self):
         """
-        Calculate heading based on position history.
+        Calculate heading and speed based on position history.
         Only calculates if we have sufficient data points.
         """
         with self.lock:
             if len(self.position_history) < 2:
                 return
             
-            # Get most recent positions that are at least 0.5 seconds apart
+            # Get most recent positions
             positions = list(self.position_history)
             latest = positions[-1]
+            previous = positions[-2]
             
-            # Find a previous position at least 0.5 seconds old for better accuracy
-            previous = None
-            min_time_diff = 0.5  # seconds
-            
-            for pos in reversed(positions[:-1]):
-                if latest[2] - pos[2] >= min_time_diff:
-                    previous = pos
-                    break
-            
-            # If no suitable position found, use the oldest one we have
-            if previous is None and len(positions) > 1:
-                previous = positions[0]
-            elif previous is None:
-                return  # Not enough data
-            
-            # Calculate heading
-            lat1, lon1, _ = previous
-            lat2, lon2, _ = latest
+            # Extract coordinates and timestamps
+            lat1, lon1, time1 = previous
+            lat2, lon2, time2 = latest
             
             # Skip if positions are identical
             if abs(lat1 - lat2) < 1e-9 and abs(lon1 - lon2) < 1e-9:
                 return
             
-            # Convert to radians
+            # Calculate time difference in seconds
+            try:
+                time_diff = self._convert_to_timestamp(time2) - self._convert_to_timestamp(time1)
+                if time_diff <= 0:
+                    return
+            except Exception as e:
+                logger.error(f"Error processing timestamps for speed calculation: {e}")
+                return
+            
+            # Calculate distance using the Haversine formula
+            distance = self._haversine(lat1, lon1, lat2, lon2)
+            
+            # Calculate speed in m/s and convert to km/h
+            speed_mps = distance / time_diff
+            self.speed = speed_mps * 3.6  # Convert to km/h
+            
+            if self.speed_callback:
+                self.speed_callback(self.speed)
+
+            # Calculate heading
             lat1_rad = math.radians(lat1)
             lon1_rad = math.radians(lon1)
             lat2_rad = math.radians(lat2)
             lon2_rad = math.radians(lon2)
             
-            # Calculate heading
             y = math.sin(lon2_rad - lon1_rad) * math.cos(lat2_rad)
             x = math.cos(lat1_rad) * math.sin(lat2_rad) - \
                 math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(lon2_rad - lon1_rad)
             heading_rad = math.atan2(y, x)
             
-            # Convert to degrees
             heading_deg = (math.degrees(heading_rad) + 360) % 360
             
             # Update heading
@@ -217,6 +228,44 @@ class GPSHandler:
                     self.heading_callback(heading_deg)
                 except Exception as e:
                     logger.error(f"Error in heading callback: {e}")
+
+    def _convert_to_timestamp(self, time_obj):
+        """
+        Convert a datetime-like object to a Unix timestamp.
+        """
+        if isinstance(time_obj, (int, float)):
+            return time_obj  # Already a timestamp
+        elif hasattr(time_obj, 'timestamp'):
+            return time_obj.timestamp()  # datetime.datetime
+        elif isinstance(time_obj, datetime.time):
+            # Handle datetime.time (assume same day for simplicity)
+            today = datetime.date.today()
+            return time.mktime(datetime.datetime.combine(today, time_obj).timetuple())
+        else:
+            raise TypeError(f"Unsupported timestamp type: {type(time_obj)}")
+    
+    def _haversine(self, lat1, lon1, lat2, lon2):
+        """
+        Calculate the great-circle distance between two points on the Earth using the Haversine formula.
+        
+        Args:
+            lat1, lon1: Latitude and longitude of the first point in degrees
+            lat2, lon2: Latitude and longitude of the second point in degrees
+        
+        Returns:
+            Distance in meters
+        """
+        R = 6371000  # Radius of Earth in meters
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
+        
+        a = math.sin(delta_phi / 2) ** 2 + \
+            math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        
+        return R * c
     
     def _heading_to_cardinal(self, heading):
         """Convert heading in degrees to cardinal direction."""
@@ -269,3 +318,23 @@ class GPSHandler:
             return (self.default_lat, self.default_lon)
         
         return None
+
+    def _haversine(self, lat1, lon1, lat2, lon2):
+        """
+        Calculate the great-circle distance between two points on the Earth's surface.
+        """
+        R = 6371e3  # Earth radius in meters
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
+        
+        a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        
+        return R * c
+
+    def get_speed(self):
+        """Thread-safe method to get the current speed in km/h."""
+        with self.lock:
+            return self.speed

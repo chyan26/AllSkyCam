@@ -49,6 +49,8 @@ class HeadingVisualizer:
     """Class to visualize the heading direction in real-time using tkinter."""
     def __init__(self, root):
         self.heading = 0  # Initial heading value
+        self.gps_heading = 0  # Initial GPS heading value
+        self.speed = 0  # Initial speed value in km/h
         self.root = root
         self.root.title("Heading Visualizer")
         self.canvas = tk.Canvas(self.root, width=600, height=600, bg="white")
@@ -64,21 +66,41 @@ class HeadingVisualizer:
             outline="black"
         )
 
-        # Draw the initial arrow
+        # Draw the initial arrow for heading
         self.arrow = self.canvas.create_line(
             self.center_x, self.center_y,
             self.center_x, self.center_y - self.radius,
             arrow=tk.LAST, fill="blue", width=10, arrowshape=(20, 25, 10)
         )
 
+        # Draw the initial arrow for GPS heading
+        self.gps_arrow = self.canvas.create_line(
+            self.center_x, self.center_y,
+            self.center_x, self.center_y - self.radius,
+            arrow=tk.LAST, fill="red", width=5, arrowshape=(15, 20, 8)
+        )
+
         # Add heading text
         self.heading_text = self.canvas.create_text(300, 500, text="Heading: 0°")
+        self.gps_heading_text = self.canvas.create_text(300, 530, text="GPS Heading: 0°", fill="red")
+
+        # Add speed text
+        self.speed_text = self.canvas.create_text(300, 560, text="Speed: 0 km/h", fill="green")
 
     def update_heading(self, heading):
         """Update the heading direction and text."""
-        # Ensure GUI updates happen in the main thread
         if self.root and self.root.winfo_exists():
-             self.root.after(0, self._update_heading_safe, heading)
+            self.root.after(0, self._update_heading_safe, heading)
+
+    def update_gps_heading(self, gps_heading):
+        """Update the GPS heading direction and text."""
+        if self.root and self.root.winfo_exists():
+            self.root.after(0, self._update_gps_heading_safe, gps_heading)
+
+    def update_speed(self, speed):
+        """Update the speed text."""
+        if self.root and self.root.winfo_exists():
+            self.root.after(0, self._update_speed_safe, speed)
 
     def _update_heading_safe(self, heading):
         """Safely update heading and text from the main thread."""
@@ -86,6 +108,19 @@ class HeadingVisualizer:
             self.heading = heading
             self._update_arrow()
             self._update_heading_text()
+
+    def _update_gps_heading_safe(self, gps_heading):
+        """Safely update GPS heading and text from the main thread."""
+        if self.root and self.root.winfo_exists():
+            self.gps_heading = gps_heading
+            self._update_gps_arrow()
+            self._update_gps_heading_text()
+
+    def _update_speed_safe(self, speed):
+        """Safely update speed text from the main thread."""
+        if self.root and self.root.winfo_exists():
+            self.speed = speed
+            self._update_speed_text()
 
     def _update_arrow(self):
         """Update the arrow direction on the canvas."""
@@ -99,10 +134,32 @@ class HeadingVisualizer:
                 end_x, end_y  # End point
             )
 
+    def _update_gps_arrow(self):
+        """Update the GPS arrow direction on the canvas."""
+        if self.canvas and self.canvas.winfo_exists():
+            angle_rad = math.radians(self.gps_heading)
+            end_x = self.center_x + self.radius * math.sin(angle_rad)
+            end_y = self.center_y - self.radius * math.cos(angle_rad)
+            self.canvas.coords(
+                self.gps_arrow,
+                self.center_x, self.center_y,  # Start point
+                end_x, end_y  # End point
+            )
+
     def _update_heading_text(self):
         """Update the heading text display."""
         if self.canvas and self.canvas.winfo_exists():
             self.canvas.itemconfig(self.heading_text, text=f"Heading: {self.heading:.1f}°")
+
+    def _update_gps_heading_text(self):
+        """Update the GPS heading text display."""
+        if self.canvas and self.canvas.winfo_exists():
+            self.canvas.itemconfig(self.gps_heading_text, text=f"GPS Heading: {self.gps_heading:.1f}°")
+
+    def _update_speed_text(self):
+        """Update the speed text display."""
+        if self.canvas and self.canvas.winfo_exists():
+            self.canvas.itemconfig(self.speed_text, text=f"Speed: {self.speed:.1f} km/h")
 
 # --- CameraAcquisition class (camera hardware interaction only) ---
 class CameraAcquisition:
