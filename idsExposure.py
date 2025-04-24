@@ -1005,6 +1005,11 @@ def main():
         default_lon=args.default_lon,
         log_to_system=args.log_gps_updates
     )
+    
+    # Set callback to update visualizer with GPS heading
+    gps_handler.set_heading_callback(lambda heading: visualizer.update_gps_heading(heading))
+    
+    # Start GPS handler
     gps_handler.start()
 
     # Create CameraAcquisition instance (handles hardware)
