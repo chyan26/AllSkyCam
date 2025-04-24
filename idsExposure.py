@@ -972,6 +972,10 @@ class ExposureSequence:
             
             # Subsequent images processing
             elif self.edges is not None and self.sunAzi is not None:
+                detected_edges = processor.edgeDetection(display=False)
+                self.edges = detected_edges
+                logger.info(f"Detected edges: {detected_edges}")
+                
                 processor.sunDetectionSEP(display=False)
                 if processor.sunLocation is not None:
                     sun_x, sun_y, _ = processor.sunLocation
