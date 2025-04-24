@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import os
 import logging # Added for basic logging
+import argparse  # Import argparse for command-line arguments
 
 # Setup basic logging for this script
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -270,26 +271,50 @@ def plot_coordinates(data):
 
     # Bottom subplot - Angle differences
     if angle_differences:
-        ax2.plot(valid_track_indices, angle_differences, 'b.-', label='Angle Difference (Track - Heading)')
-        ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        angle_differences = np.array(angle_differences)
+
+        # Calculate statistics
+        mean_diff = np.mean(angle_differences)
+        std_diff = np.std(angle_differences)
+
+        # Filter out points beyond 1 sigma
+        within_1_sigma = np.abs(angle_differences - mean_diff) <= std_diff
+        filtered_indices = np.array(valid_track_indices)[within_1_sigma]
+        filtered_angle_diffs = angle_differences[within_1_sigma]
+        outlier_indices = np.array(valid_track_indices)[~within_1_sigma]
+        outlier_angle_diffs = angle_differences[~within_1_sigma]
+
+        # Recalculate statistics for filtered data
+        filtered_mean_diff = np.mean(filtered_angle_diffs)
+        filtered_std_diff = np.std(filtered_angle_diffs)
+        filtered_median_diff = np.median(filtered_angle_diffs)
+
+        logging.info(f"Filtered Mean Angle Difference: {filtered_mean_diff:.1f}°")
+        logging.info(f"Filtered Std Dev Angle Difference: {filtered_std_diff:.1f}°")
+        logging.info(f"Filtered Median Angle Difference: {filtered_median_diff:.1f}°")
+
+        # Plot angle differences
+        ax2.plot(filtered_indices, filtered_angle_diffs, 'b.-', label='Within 1-sigma')
+        ax2.scatter(outlier_indices, outlier_angle_diffs, color='red', label='Outliers (>1-sigma)', alpha=0.6)
+        ax2.axhline(y=mean_diff, color='green', linestyle='--', label='Mean')
+        ax2.axhline(y=mean_diff + std_diff, color='orange', linestyle='--', label='+1 Sigma')
+        ax2.axhline(y=mean_diff - std_diff, color='orange', linestyle='--', label='-1 Sigma')
         ax2.set_xlabel(f'Point Index (every {step} points)')
         ax2.set_ylabel('Angle Difference (degrees)')
         ax2.set_title('Track Angle vs Adjusted Heading Angle Difference')
         ax2.grid(True)
         ax2.legend(fontsize='small')
-        ax2.set_ylim(-190, 190) # Ensure full range is visible
-
-        # Print statistics
-        mean_diff = np.mean(angle_differences)
-        std_diff = np.std(angle_differences)
-        median_diff = np.median(angle_differences)
+        ax2.set_ylim(-190, 190)  # Ensure full range is visible
+           # Add statistics after filtering
         ax2.text(0.02, 0.95,
-                f'Mean diff: {mean_diff:.1f}°\nMedian diff: {median_diff:.1f}°\nStd dev: {std_diff:.1f}°',
-                transform=ax2.transAxes, fontsize='small', verticalalignment='top',
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+             f'Mean diff: {filtered_mean_diff:.1f}°\nMedian diff: {filtered_median_diff:.1f}°\nStd dev: {filtered_std_diff:.1f}°',
+             transform=ax2.transAxes, fontsize='small', verticalalignment='top',
+             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+
+ 
     else:
-         ax2.text(0.5, 0.5, 'No angle differences calculated\n(Need consecutive points with valid headings)',
-                  ha='center', va='center', fontsize='medium', color='grey')
+        ax2.text(0.5, 0.5, 'No angle differences calculated\n(Need consecutive points with valid headings)',
+                 ha='center', va='center', fontsize='medium', color='grey')
 
 
     plt.tight_layout(pad=1.5) # Add padding
@@ -317,12 +342,12 @@ def plot_angle_comparison(data):
     valid_lats = []
     valid_lons = []
 
-    step = 5 # Use same step as plot_coordinates for consistency
-    for i in range(0, len(lats)-step, step):
+    step = 5  # Use same step as plot_coordinates for consistency
+    for i in range(0, len(lats) - step, step):
         if np.isnan(headings_adjusted[i]):
             continue
 
-        track_angle = calculate_track_angle(lats[i], lons[i], lats[i+step], lons[i+step])
+        track_angle = calculate_track_angle(lats[i], lons[i + step], lons[i + step])
         if track_angle is not None:
             track_angles.append(track_angle)
             indices.append(i)
@@ -340,24 +365,46 @@ def plot_angle_comparison(data):
         plt.show()
         return
 
+    # Convert angle differences to a numpy array
+    angle_diffs = np.array(angle_diffs)
+
+    # Calculate mean and standard deviation
+    mean_diff = np.mean(angle_diffs)
+    std_diff = np.std(angle_diffs)
+    print(f"Mean Angle Difference: {mean_diff:.1f}°")
+    print(f"Std Dev Angle Difference: {std_diff:.1f}°")
+    # Filter out points beyond 1 sigma
+    within_1_sigma = np.abs(angle_diffs - mean_diff) <= std_diff
+    filtered_angle_diffs = angle_diffs[within_1_sigma]
+    filtered_indices = np.array(indices)[within_1_sigma]
+    filtered_lats = np.array(valid_lats)[within_1_sigma]
+    filtered_lons = np.array(valid_lons)[within_1_sigma]
+
+    # Recalculate statistics after filtering
+    filtered_mean_diff = np.mean(filtered_angle_diffs)
+    filtered_std_diff = np.std(filtered_angle_diffs)
+    filtered_median_diff = np.median(filtered_angle_diffs)
+    logging.info(f"Filtered Mean Angle Difference: {filtered_mean_diff:.1f}°")
+    logging.info(f"Filtered Std Dev Angle Difference: {filtered_std_diff:.1f}°")
+    logging.info(f"Filtered Median Angle Difference: {filtered_median_diff:.1f}°")
     # Create figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7)) # Increased figure size
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))  # Increased figure size
 
     # Left subplot - GPS track with color-coded differences
-    scatter = ax1.scatter(valid_lons, valid_lats,
-                         c=angle_diffs,
-                         cmap='RdYlBu', # Red-Yellow-Blue colormap good for divergences
-                         s=50,         # Marker size
-                         vmin=-180,
-                         vmax=180,
-                         edgecolors='k', # Add black edge for visibility
-                         linewidths=0.5)
-    ax1.plot(lons, lats, 'k-', alpha=0.3, linewidth=1, label='_nolegend_') # Full track in background
+    scatter = ax1.scatter(filtered_lons, filtered_lats,
+                           c=filtered_angle_diffs,
+                           cmap='RdYlBu',  # Red-Yellow-Blue colormap good for divergences
+                           s=50,  # Marker size
+                           vmin=-180,
+                           vmax=180,
+                           edgecolors='k',  # Add black edge for visibility
+                           linewidths=0.5)
+    ax1.plot(lons, lats, 'k-', alpha=0.3, linewidth=1, label='_nolegend_')  # Full track in background
     cbar = plt.colorbar(scatter, ax=ax1, label='Angle Difference (Track - Heading) [degrees]')
     cbar.ax.tick_params(labelsize='small')
     ax1.set_xlabel('Longitude')
     ax1.set_ylabel('Latitude')
-    ax1.set_title('GPS Track Colored by Angle Difference')
+    ax1.set_title('GPS Track Colored by Angle Difference (Filtered)')
     ax1.grid(True)
     ax1.ticklabel_format(useOffset=False, style='plain')
 
@@ -366,28 +413,23 @@ def plot_angle_comparison(data):
     ax1.plot(lons[-1], lats[-1], 'ro', markersize=8, label='End', markeredgecolor='k')
     ax1.legend(fontsize='small')
 
-
     # Right subplot - Angle differences over time/index
-    ax2.plot(indices, angle_diffs, 'b.-', markersize=4)
+    ax2.plot(filtered_indices, filtered_angle_diffs, 'b.-', markersize=4)
     ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
     ax2.set_xlabel(f'Point Index (every {step} points)')
     ax2.set_ylabel('Angle Difference (degrees)')
-    ax2.set_title('Track vs Adjusted Heading Angle Difference')
+    ax2.set_title('Track vs Adjusted Heading Angle Difference (Filtered)')
     ax2.grid(True)
     ax2.set_ylim(-190, 190)
 
-    # Add statistics
-    mean_diff = np.mean(angle_diffs)
-    std_diff = np.std(angle_diffs)
-    median_diff = np.median(angle_diffs)
+    # Add statistics after filtering
     ax2.text(0.02, 0.95,
-            f'Mean diff: {mean_diff:.1f}°\nMedian diff: {median_diff:.1f}°\nStd dev: {std_diff:.1f}°',
-            transform=ax2.transAxes, fontsize='small', verticalalignment='top',
-            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+             f'Mean diff: {filtered_mean_diff:.1f}°\nMedian diff: {filtered_median_diff:.1f}°\nStd dev: {filtered_std_diff:.1f}°',
+             transform=ax2.transAxes, fontsize='small', verticalalignment='top',
+             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
 
     plt.tight_layout(pad=1.5)
     plt.show()
-
 
 def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=30):
     """
@@ -462,9 +504,17 @@ def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=3
 
 def main():
     # --- Configuration ---
-    log_file = 'logs/system_20250422_151314.log' # Make sure this path is correct
-    csv_file = 'gps_data_extracted.csv' # Use a different name to avoid confusion
-    force_reextract = False # Set to True to ignore existing CSV and re-parse log
+    parser = argparse.ArgumentParser(description="Analyze GPS and heading data.")
+    parser.add_argument(
+        "--force-reextract",
+        action="store_true",
+        help="Force re-extraction of GPS data from the log file, ignoring existing CSV."
+    )
+    args = parser.parse_args()
+
+    log_file = 'logs/system_20250422_151314.log'  # Make sure this path is correct
+    csv_file = 'gps_data_extracted.csv'  # Use a different name to avoid confusion
+    force_reextract = args.force_reextract  # Use the command-line argument
     # --- End Configuration ---
 
     if not os.path.exists(log_file):
@@ -472,7 +522,7 @@ def main():
         return
 
     data = []
-    if os.path.exists(csv_file) and not force_reextract:
+    if (os.path.exists(csv_file) and not force_reextract):
         logging.info(f"Loading existing data from {csv_file}")
         try:
             df = pd.read_csv(csv_file)
@@ -489,9 +539,9 @@ def main():
             logging.info(f"Loaded {len(data)} records from CSV.")
         except Exception as e:
             logging.error(f"Error loading data from {csv_file}: {e}. Re-extracting from log.")
-            data = [] # Ensure data is empty to trigger extraction
+            data = []  # Ensure data is empty to trigger extraction
 
-    if not data: # If CSV didn't exist, was empty, force_reextract, or loading failed
+    if not data:  # If CSV didn't exist, was empty, force_reextract, or loading failed
         logging.info(f"Extracting GPS data from {log_file}")
         raw_data = extract_gps_and_heading(log_file)
 
@@ -502,7 +552,7 @@ def main():
         # Filter out entries where essential data (lat, lon) might be missing (though unlikely from regex)
         # And convert to DataFrame for saving
         df = pd.DataFrame(raw_data, columns=['Latitude', 'Longitude', 'Heading', 'Sequence'])
-        df.dropna(subset=['Latitude', 'Longitude'], inplace=True) # Should not drop any if regex worked
+        df.dropna(subset=['Latitude', 'Longitude'], inplace=True)  # Should not drop any if regex worked
 
         # Save to CSV (includes None/NaN values correctly)
         try:
@@ -532,7 +582,7 @@ def main():
 
     # Perform plotting and analysis
     plot_coordinates(data)
-    plot_angle_comparison(data)
+    #plot_angle_comparison(data)
 
     # Find anomalies
     anomalies = find_heading_anomalies(data)
