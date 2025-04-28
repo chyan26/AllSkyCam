@@ -508,7 +508,7 @@ class CameraAcquisition:
 
         filepath = None # Initialize for error message
         try:
-            fits_dir = os.path.join(self.output_dir, "jpeg")
+            fits_dir = os.path.join(self.output_dir, "fits")
             os.makedirs(fits_dir, exist_ok=True)
             
             # Create filename
