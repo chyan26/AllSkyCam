@@ -508,11 +508,15 @@ class CameraAcquisition:
 
         filepath = None # Initialize for error message
         try:
-            os.makedirs(self.output_dir, exist_ok=True)
+            fits_dir = os.path.join(self.output_dir, "jpeg")
+            os.makedirs(fits_dir, exist_ok=True)
+            
+            # Create filename
+            os.makedirs(fits_dir, exist_ok=True)
             now = datetime.now()
             # Use microseconds for potentially higher frame rates
             filename = now.strftime(f"image_%Y%m%d_%H%M%S_{exposure_num:03d}.fits")
-            filepath = os.path.join(self.output_dir, filename)
+            filepath = os.path.join(fits_dir, filename)
 
             hdu = fits.PrimaryHDU(image_data.astype(np.uint16)) # Ensure correct dtype for FITS
             hdr = hdu.header
