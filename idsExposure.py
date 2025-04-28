@@ -794,14 +794,14 @@ class ExposureSequence:
     Controls the exposure sequence, camera operation, and image processing.
     Keeps the acquisition loop separate from the camera hardware interaction.
     """
-    def __init__(self, camera, num_images=10, sleep_time=0.1, 
+    def __init__(self, camera, num_images=None, sleep_time=0.1, 
                  perform_analysis=False, visualizer=None, gps_handler=None):
         """
         Initialize an exposure sequence controller.
         
         Args:
             camera: CameraAcquisition instance for hardware control
-            num_images: Number of images to capture in sequence
+            num_images: Number of images to capture in sequence (None for continuous)
             sleep_time: Time to sleep between exposures (seconds)
             perform_analysis: Whether to analyze images for sun position
             visualizer: HeadingVisualizer instance for displaying heading
@@ -829,11 +829,10 @@ class ExposureSequence:
         Args:
             shared_state: Optional SharedState object for signaling between threads
         """
-        logger.info(f"Starting exposure sequence: {self.num_images} images")
+        logger.info(f"Starting exposure sequence: {'continuous' if self.num_images is None else self.num_images} images")
         self.is_running = True
         is_first_image = True
-
-        
+        image_index = 0  # Track the image index for continuous mode
         
         try:
             # Initialize camera if not already done
@@ -870,42 +869,45 @@ class ExposureSequence:
                         logger.warning("Could not get GPS fix within timeout. Analysis may be limited.")
             
             # Main exposure loop
-            for i in range(self.num_images):
+            while self.num_images is None or image_index < self.num_images:
                 # Check if we should stop (from external signal)
                 if shared_state and not shared_state.is_running:
                     logger.info("Stopping exposure sequence due to external signal")
                     break
                     
-                logger.info(f"--- Acquiring image {i + 1}/{self.num_images} ---")
+                logger.info(f"--- Acquiring image {image_index + 1} ---")
                 
                 # Acquire single frame
                 image_data, buffer = self.camera.acquire_image()
                 
                 # Handle acquisition failure
                 if image_data is None or buffer is None:
-                    logger.warning(f"Failed to acquire image {i + 1}. Skipping.")
+                    logger.warning(f"Failed to acquire image {image_index + 1}. Skipping.")
                     time.sleep(0.5)  # Brief pause after failure
                     continue
                     
                 # Process the image if requested
                 if self.perform_analysis:
-                    self._process_image(image_data, i, is_first_image)
+                    self._process_image(image_data, image_index, is_first_image)
                     # First image is now processed
                     if is_first_image and self.edges is not None:
                         is_first_image = False
                         
                 # Save the image
-                self.camera.save_fits(image_data, i + 1)
+                self.camera.save_fits(image_data, image_index + 1)
                 
                 # Save JPEG with optional edge overlay
-                self.camera.save_jpeg(image_data, i + 1, self.edges,self.sunLocation)
+                self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
 
                 # Queue buffer back
                 self.camera.queue_buffer(buffer)
                 
                 # Sleep between frames
-                if self.sleep_time > 0 and i < self.num_images - 1:
+                if self.sleep_time > 0:
                     time.sleep(self.sleep_time)
+                
+                # Increment image index
+                image_index += 1
                     
             return True
             
@@ -1037,7 +1039,7 @@ def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=5, help="Number of images to acquire")
+    parser.add_argument("--images", type=int, default=None, help="Number of images to acquire")
     parser.add_argument("--sleep", type=float, default=0.1, help="Time in seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate (default: minimum required)")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
