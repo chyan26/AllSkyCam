@@ -1,5 +1,6 @@
 output/fits/*.fits
 output/jpeg/*.jpg
+output/
 
 images/*/*.fits
 *.csv
