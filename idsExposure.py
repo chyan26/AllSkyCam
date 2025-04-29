@@ -1053,7 +1053,7 @@ def parse_args():
                         help="Log all GPS updates to the system log")
     return parser.parse_args()
 
-    return parser.parse_args()
+
 
 
 # --- Main Execution Logic ---
