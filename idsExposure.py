@@ -593,10 +593,16 @@ class CameraAcquisition:
             img_max = np.max(image_data)
             img_normalized = np.clip((image_data - img_min) / (img_max - img_min) * 255, 0, 255).astype(np.uint8)
             
-            # Create a black and white image (no colormap)
-            # Convert to 3-channel so we can draw colored circles
-            img_bw = cv2.cvtColor(img_normalized, cv2.COLOR_GRAY2BGR)
+            # Enhance low count part using CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            img_enhanced = clahe.apply(img_normalized)
             
+            # Convert to 3-channel so we can draw colored circles
+            img_bw = cv2.cvtColor(img_enhanced, cv2.COLOR_GRAY2BGR)
+            
+            # Flip the image left and right
+            img_bw = cv2.flip(img_bw, 1)
+
             # Draw circle if edges are provided
             if edges is not None and len(edges) > 0:
                 # Extract circle parameters from edges
@@ -606,7 +612,7 @@ class CameraAcquisition:
                     # Transform coordinates to account for flipping done in analysis
                     # The edges were detected on flipped image (flip up-down and left-right)
                     height, width = img_bw.shape[:2]
-                    transformed_x = width - 1 - x
+                    transformed_x = x
                     transformed_y = height - 1 - y
                     
                     # Draw circle on the image
@@ -626,7 +632,7 @@ class CameraAcquisition:
                     
                     # Transform coordinates for sun position as well
                     height, width = img_bw.shape[:2]
-                    transformed_sun_x = width - 1 - sun_x
+                    transformed_sun_x = sun_x
                     transformed_sun_y = height - 1 - sun_y
                     
                     # Draw an X mark at the sun position
@@ -950,6 +956,18 @@ class ExposureSequence:
                 if processor.sunLocation is not None and detected_edges is not None:
                     self.edges = detected_edges
                     sun_x, sun_y, _ = processor.sunLocation
+                    logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
+                    
+                    # Calculate angle relative to image center
+                    image_center_x = image_data.shape[1] / 2
+                    image_center_y = image_data.shape[0] / 2
+                    # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
+                    angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
+                    
+                    
+                    logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
+                    
+                    
                     self.sunLocation = (sun_x, sun_y)
                     allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
                     
@@ -985,6 +1003,17 @@ class ExposureSequence:
                 processor.sunDetectionSEP(display=False)
                 if processor.sunLocation is not None:
                     sun_x, sun_y, _ = processor.sunLocation
+                    logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
+                    
+                    # Calculate angle relative to image center
+                    image_center_x = image_data.shape[1] / 2
+                    image_center_y = image_data.shape[0] / 2
+                    # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
+                    angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
+
+                    logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
+                    
+                    # Calculate and update latitude/longitude
                     allsky_x, allsky_y, allsky_r = self.edges[0,0], self.edges[0,1], self.edges[0,2]
                     self.sunLocation = (sun_x, sun_y)
                     processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
