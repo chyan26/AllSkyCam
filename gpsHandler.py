@@ -5,7 +5,7 @@ import math
 from collections import deque
 from ubloxReader import GPSReader
 import datetime
-import subprocess
+from utils import calculate_distance  # Import the function from util.py
 
 logger = logging.getLogger("gps_handler")
 system_logger = logging.getLogger("idsExposure.py")  # Use the main system logger
@@ -214,8 +214,8 @@ class GPSHandler:
                 logger.error(f"Error processing timestamps for speed calculation: {e}")
                 return
             
-            # Calculate distance using the Haversine formula
-            distance = self._haversine(lat1, lon1, lat2, lon2)
+            # Calculate distance using the `calculate_distance` function from util.py
+            distance = calculate_distance((lat1, lon1), (lat2, lon2))
             
             # Calculate speed in m/s and convert to km/h
             speed_mps = distance / time_diff
@@ -343,21 +343,6 @@ class GPSHandler:
         
         return None
 
-    def _haversine(self, lat1, lon1, lat2, lon2):
-        """
-        Calculate the great-circle distance between two points on the Earth's surface.
-        """
-        R = 6371e3  # Earth radius in meters
-        phi1 = math.radians(lat1)
-        phi2 = math.radians(lat2)
-        delta_phi = math.radians(lat2 - lat1)
-        delta_lambda = math.radians(lon2 - lon1)
-        
-        a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        
-        return R * c
-
     def get_speed(self):
         """Thread-safe method to get the current speed in km/h."""
         with self.lock:
@@ -378,4 +363,4 @@ class GPSHandler:
                 else:
                     return datetime.datetime.fromtimestamp(self.timestamp)
             return None
-        
+

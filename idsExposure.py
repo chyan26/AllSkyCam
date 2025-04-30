@@ -5,6 +5,7 @@ from logger_config import setup_logging
 import subprocess
 setup_logging()
 from datetime import datetime, UTC
+from utils import convert_to_taipei_time, calculate_distance
 
 program_name = os.path.basename(__file__)
 logger = logging.getLogger(program_name)
@@ -1138,7 +1139,7 @@ def main():
             today_utc = datetime.now(UTC).date()
             # Combine current UTC date with GPS time
             gps_time = datetime.combine(today_utc, gps_time)
-            local_time = GPSReader.convert_to_taipei_time(gps_time)
+            local_time = convert_to_taipei_time(gps_time)
            
             logger.info(f"Local Time (Taipei): {local_time.time()}")
             update_system_time(local_time)
