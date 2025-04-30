@@ -1,12 +1,14 @@
 # /home/myuser/AllSkyCam/idsExposure.py
 import logging
 import os
-from logger_config import setup_logging
 import subprocess
-setup_logging()
 from datetime import datetime, UTC
 from utils import convert_to_taipei_time, calculate_distance
 
+
+
+from logger_config import setup_logging
+setup_logging()
 program_name = os.path.basename(__file__)
 logger = logging.getLogger(program_name)
 
@@ -874,14 +876,25 @@ class ExposureSequence:
                     continue
 
                 if self.perform_analysis:
-                    asyncio.run(self._process_image_async(image_data, image_index, is_first_image))
-                    with self.state_lock:
+                    # Run synchronously to ensure order
+                    self._process_image(image_data, image_index, is_first_image)
+                    if not self.state_lock.acquire(timeout=5):
+                        logger.error("Failed to acquire state lock within 5 seconds")
+                        continue
+                    try:
                         if is_first_image and self.edges is not None:
                             is_first_image = False
+                    finally:
+                        self.state_lock.release()
 
-                with self.state_lock:
+                if not self.state_lock.acquire(timeout=5):
+                    logger.error("Failed to acquire state lock within 5 seconds")
+                    continue
+                try:
                     self.camera.save_fits(image_data, image_index + 1)
                     self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
+                finally:
+                    self.state_lock.release()
 
                 self.camera.queue_buffer(buffer)
 
@@ -963,9 +976,14 @@ class ExposureSequence:
                     logger.warning("Sun or horizon detection failed on first image")
             
             else:
-                with self.state_lock:
+                if not self.state_lock.acquire(timeout=5):
+                    logger.error("Failed to acquire state lock within 5 seconds")
+                    return
+                try:
                     edges = self.edges
                     sun_azi = self.sunAzi
+                finally:
+                    self.state_lock.release()
 
                 if edges is not None and sun_azi is not None:
                     detected_edges = processor.edgeDetection(display=False)
@@ -981,7 +999,6 @@ class ExposureSequence:
                         angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
                         logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
                         
-                        # Use new edges for calculations
                         allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
                         processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
                         logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")

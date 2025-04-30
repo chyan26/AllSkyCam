@@ -6,9 +6,12 @@ from collections import deque
 from ubloxReader import GPSReader
 import datetime
 from utils import calculate_distance  # Import the function from util.py
-
-logger = logging.getLogger("gps_handler")
-system_logger = logging.getLogger("idsExposure.py")  # Use the main system logger
+import os
+from logger_config import setup_logging
+setup_logging()
+program_name = os.path.basename(__file__)
+logger = logging.getLogger(program_name)
+system_logger = logging.getLogger("gpsHandler.py")  # Use the main system logger
 
 class GPSHandler:
     """

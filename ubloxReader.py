@@ -6,6 +6,11 @@ from datetime import time, datetime
 import pytz
 import math
 from utils import convert_to_taipei_time, calculate_distance
+import os
+from logger_config import setup_logging
+setup_logging()
+program_name = os.path.basename(__file__)
+logger = logging.getLogger(program_name)
 
 GNSSSystems = Literal['GPS', 'GLONASS', 'GALILEO', 'BEIDOU', 'GNSS']
 
@@ -40,10 +45,10 @@ class GPSReader:
         for attempt in range(retries):
             try:
                 self.serial_conn = serial.Serial(self.device, self.baudrate, timeout=self.timeout)
-                logging.info(f"Connected to {self.device} on attempt {attempt + 1}")
+                logger.info(f"Connected to {self.device} on attempt {attempt + 1}")
                 return self
             except serial.SerialException as e:
-                logging.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
                 time.sleep(delay)
         raise serial.SerialException(f"Failed to connect to {self.device} after {retries} attempts")
 
