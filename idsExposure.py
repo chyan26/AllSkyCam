@@ -1089,6 +1089,12 @@ def parse_args():
 def main():
     args = parse_args()
     state = SharedState()
+    
+    # Log the parsed arguments
+    logger.info("Program started with the following parameters:")
+    for arg, value in vars(args).items():
+        logger.info(f"{arg}: {value}")
+
 
     # Initialize Tkinter and HeadingVisualizer in the main thread
     root = tk.Tk()
@@ -1108,6 +1114,12 @@ def main():
     # Start GPS handler
     gps_handler.start()
 
+    # After starting the GPS handler
+    if gps_handler.sync_system_time_with_gps():
+        logger.info("System time synced with GPS successfully.")
+    else:
+        logger.warning("Failed to sync system time with GPS.")
+        
     # Create CameraAcquisition instance (handles hardware)
     camera = CameraAcquisition(
         exposure_time_ms=args.exposure,

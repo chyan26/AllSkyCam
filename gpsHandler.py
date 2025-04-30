@@ -5,6 +5,7 @@ import math
 from collections import deque
 from ubloxReader import GPSReader
 import datetime
+import subprocess
 
 logger = logging.getLogger("gps_handler")
 system_logger = logging.getLogger("idsExposure.py")  # Use the main system logger
@@ -338,3 +339,25 @@ class GPSHandler:
         """Thread-safe method to get the current speed in km/h."""
         with self.lock:
             return self.speed
+
+    def sync_system_time_with_gps(self):
+        """Sync the system time with GPS time."""
+        try:
+            gps_time = self.get_gps_time()  # Assuming this method exists and returns a datetime object
+            if gps_time is None:
+                logger.warning("GPS time not available. Cannot sync system time.")
+                return False
+
+            # Format the GPS time for the `date` command
+            formatted_time = gps_time.strftime('%m%d%H%M%Y.%S')  # Format: MMDDhhmmYYYY.ss
+
+            # Use the `date` command to set the system time
+            subprocess.run(['sudo', 'date', formatted_time], check=True)
+            logger.info(f"System time successfully synced with GPS time: {gps_time}")
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to sync system time with GPS: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error syncing system time with GPS: {e}", exc_info=True)
+            return False
