@@ -139,8 +139,6 @@ class GPSHandler:
                             # Store position for heading calculation
                             self.position_history.append((lat, lon, gps_time))
 
-                        system_logger.info(f"GPS timestamp updated: {gps_time}")
-
                         # Signal first fix if not already done
                         if not self.first_fix_event.is_set():
                             logger.info(f"First GPS fix obtained: Lat={lat:.6f}, Lon={lon:.6f}, Satellites={sats}")

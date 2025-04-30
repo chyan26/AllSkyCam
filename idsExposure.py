@@ -1143,8 +1143,7 @@ def main():
             logger.info("Could not get GPS fix")
     finally:
         gps.disconnect()
-    
-    
+
     # Initialize Tkinter and HeadingVisualizer in the main thread
     root = tk.Tk()
     visualizer = HeadingVisualizer(root)
