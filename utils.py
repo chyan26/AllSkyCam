@@ -3,14 +3,15 @@ from typing import Tuple
 import pytz
 import math
 
-def convert_to_taipei_time(utc_time):
+def convert_to_taipei_time(utc_time, timezone='Asia/Taipei'):
+   
     """Convert UTC time to Asia/Taipei timezone.
     Args:
         utc_time: datetime.time or datetime.datetime object
     Returns:
         datetime.time object in Asia/Taipei timezone
     """
-    taipei_tz = pytz.timezone('Asia/Taipei')
+    taipei_tz = pytz.timezone(timezone)
     
     # If input is time object, convert to datetime first
     if isinstance(utc_time, time):
