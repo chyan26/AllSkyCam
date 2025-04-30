@@ -56,6 +56,7 @@ class GPSHandler:
 
         self.speed = 0  # Speed in m/s
         self.speed_callback = None  # Callback for speed updates
+
     def start(self):
         """Start the GPS update thread."""
         if self.running:
@@ -110,17 +111,41 @@ class GPSHandler:
                             self.latitude = lat
                             self.longitude = lon
                             self.timestamp = gps_time
+                            
+                            # Ensure gps_time is a valid datetime object
+                            if isinstance(gps_time, datetime.datetime):
+                                self.timestamp = gps_time
+                            elif isinstance(gps_time, (int, float)):  # If it's a Unix timestamp
+                                self.timestamp = datetime.datetime.fromtimestamp(gps_time)
+                            elif isinstance(gps_time, datetime.time):  # If it's a time object
+                                today = datetime.date.today()
+                                self.timestamp = datetime.datetime.combine(today, gps_time)
+                            elif isinstance(gps_time, str):  # If it's a string time format
+                                try:
+                                    # Try to parse common time formats
+                                    time_obj = datetime.datetime.strptime(gps_time, "%H:%M:%S").time()
+                                    today = datetime.date.today()
+                                    self.timestamp = datetime.datetime.combine(today, time_obj)
+                                except ValueError:
+                                    logger.warning(f"Invalid GPS time format: {gps_time}")
+                                    self.timestamp = None
+                            else:
+                                logger.warning(f"Invalid GPS time format: {gps_time}")
+                                self.timestamp = None
+                            
                             self.satellites = sats
                             self.gps_fix = True
                             
                             # Store position for heading calculation
                             self.position_history.append((lat, lon, gps_time))
-                            
+
+                        system_logger.info(f"GPS timestamp updated: {gps_time}")
+
                         # Signal first fix if not already done
                         if not self.first_fix_event.is_set():
                             logger.info(f"First GPS fix obtained: Lat={lat:.6f}, Lon={lon:.6f}, Satellites={sats}")
                             self.first_fix_event.set()
-                            
+
                         # Calculate heading every 1 second
                         current_time = time.time()
                         if current_time - self.last_heading_calc_time >= self.heading_calc_interval:
@@ -339,25 +364,20 @@ class GPSHandler:
         """Thread-safe method to get the current speed in km/h."""
         with self.lock:
             return self.speed
-
-    def sync_system_time_with_gps(self):
-        """Sync the system time with GPS time."""
-        try:
-            gps_time = self.get_gps_time()  # Assuming this method exists and returns a datetime object
-            if gps_time is None:
-                logger.warning("GPS time not available. Cannot sync system time.")
-                return False
-
-            # Format the GPS time for the `date` command
-            formatted_time = gps_time.strftime('%m%d%H%M%Y.%S')  # Format: MMDDhhmmYYYY.ss
-
-            # Use the `date` command to set the system time
-            subprocess.run(['sudo', 'date', formatted_time], check=True)
-            logger.info(f"System time successfully synced with GPS time: {gps_time}")
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to sync system time with GPS: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error syncing system time with GPS: {e}", exc_info=True)
-            return False
+        
+    def get_gps_time(self):
+        """
+        Thread-safe method to get the current GPS time.
+        
+        Returns:
+            datetime.datetime: The current GPS time, or None if not available.
+        """
+        with self.lock:
+            if self.timestamp:
+                # Convert the timestamp to a datetime object if it's not already
+                if isinstance(self.timestamp, datetime.datetime):
+                    return self.timestamp
+                else:
+                    return datetime.datetime.fromtimestamp(self.timestamp)
+            return None
+        

@@ -148,7 +148,7 @@ class GPSReader:
         local_dt = utc_time.replace(tzinfo=pytz.UTC).astimezone(taipei_tz)
         
         # Return time component only
-        return local_dt.time()
+        return local_dt
 
     @staticmethod
     def calculate_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:

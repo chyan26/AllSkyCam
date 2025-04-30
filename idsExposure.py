@@ -2,7 +2,9 @@
 import logging
 import os
 from logger_config import setup_logging
+import subprocess
 setup_logging()
+from datetime import datetime, UTC
 
 program_name = os.path.basename(__file__)
 logger = logging.getLogger(program_name)
@@ -1083,6 +1085,32 @@ def parse_args():
     return parser.parse_args()
 
 
+def update_system_time(gps_time):
+    """
+    Update the system time using the GPS time.
+    """
+    try:
+        # Validate GPS time
+        if gps_time.year < 1970:
+            logger.error(f"Invalid GPS time: {gps_time}. System time not updated.")
+            return
+
+        # Format the GPS time for the `date` command
+        formatted_time = gps_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Use the `date` command to set the system time (requires sudo privileges)
+        # Redirect stdout and stderr to /dev/null to suppress output
+        subprocess.run(["sudo", "date", "-s", formatted_time], 
+                      check=True, 
+                      stdout=subprocess.DEVNULL, 
+                      stderr=subprocess.DEVNULL)
+        
+        logger.info(f"System time updated to GPS time: {formatted_time}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to update system time: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Unexpected error while updating system time: {e}", exc_info=True)
+
 
 
 # --- Main Execution Logic ---
@@ -1095,7 +1123,28 @@ def main():
     for arg, value in vars(args).items():
         logger.info(f"{arg}: {value}")
 
+    gps = GPSReader(system='GNSS').connect()
+    try:
+        coords = gps.get_coordinates()
+        if coords:
+            _, _, gps_time, _ = coords
+            # Ensure gps_time is a datetime.datetime object
+            
+            logger.info(f"Raw GPS UTC time: {gps_time}, type: {type(gps_time)}")
 
+            today_utc = datetime.now(UTC).date()
+            # Combine current UTC date with GPS time
+            gps_time = datetime.combine(today_utc, gps_time)
+            local_time = GPSReader.convert_to_taipei_time(gps_time)
+           
+            logger.info(f"Local Time (Taipei): {local_time.time()}")
+            update_system_time(local_time)
+        else:
+            logger.info("Could not get GPS fix")
+    finally:
+        gps.disconnect()
+    
+    
     # Initialize Tkinter and HeadingVisualizer in the main thread
     root = tk.Tk()
     visualizer = HeadingVisualizer(root)
@@ -1107,18 +1156,12 @@ def main():
         default_lon=args.default_lon,
         log_to_system=args.log_gps_updates
     )
-    
+
     # Set callback to update visualizer with GPS heading
     gps_handler.set_heading_callback(lambda heading: visualizer.update_gps_heading(heading))
     
     # Start GPS handler
     gps_handler.start()
-
-    # After starting the GPS handler
-    if gps_handler.sync_system_time_with_gps():
-        logger.info("System time synced with GPS successfully.")
-    else:
-        logger.warning("Failed to sync system time with GPS.")
         
     # Create CameraAcquisition instance (handles hardware)
     camera = CameraAcquisition(
