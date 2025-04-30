@@ -36,9 +36,16 @@ class GPSReader:
             'GNSS': '$GN'
         }[system]
 
-    def connect(self):
-        self.serial_conn = serial.Serial(self.device, self.baudrate, timeout=self.timeout)
-        return self
+    def connect(self, retries=3, delay=1):
+        for attempt in range(retries):
+            try:
+                self.serial_conn = serial.Serial(self.device, self.baudrate, timeout=self.timeout)
+                logging.info(f"Connected to {self.device} on attempt {attempt + 1}")
+                return self
+            except serial.SerialException as e:
+                logging.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                time.sleep(delay)
+        raise serial.SerialException(f"Failed to connect to {self.device} after {retries} attempts")
 
     def disconnect(self):
         if self.serial_conn:
