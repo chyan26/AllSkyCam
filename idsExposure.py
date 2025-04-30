@@ -42,6 +42,7 @@ import threading
 import math
 import tkinter as tk
 import gc # For garbage collection during shutdown
+import asyncio  # Add asyncio for asynchronous processing
 
 program_name = os.path.basename(__file__)
 logger = logging.getLogger(program_name)
@@ -830,29 +831,31 @@ class ExposureSequence:
         self.sunAzi = None
         self.is_running = False
         
+    async def _process_image_async(self, image_data, image_index, is_first_image):
+        """Asynchronous wrapper for processing an image."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._process_image, image_data, image_index, is_first_image)
+
     def run(self, shared_state=None):
         """
         Run the exposure sequence, capturing and processing images.
-        
-        Args:
-            shared_state: Optional SharedState object for signaling between threads
         """
         logger.info(f"Starting exposure sequence: {'continuous' if self.num_images is None else self.num_images} images")
         self.is_running = True
         is_first_image = True
         image_index = 0  # Track the image index for continuous mode
-        
+
         try:
             # Initialize camera if not already done
             if not self.camera.initialize():
                 logger.error("Camera initialization failed")
                 return False
-                
+
             # Start acquisition
             if not self.camera.start_acquisition():
                 logger.error("Failed to start acquisition")
                 return False
-            
+
             # ADDED: If we're doing analysis, wait for first GPS fix from GPSHandler
             if self.perform_analysis and self.gps_handler:
                 logger.info("Waiting for initial GPS fix...")
@@ -860,7 +863,7 @@ class ExposureSequence:
                 if gps_location:
                     lat, lon = gps_location
                     logger.info(f"Got initial GPS fix: Lat={lat:.6f}, Lon={lon:.6f}")
-                    
+
                     # Set initial coordinates in camera for metadata
                     with self.camera.state_lock:
                         self.camera.init_latitute = lat
@@ -875,50 +878,50 @@ class ExposureSequence:
                             self.camera.init_longitude = lon
                     else:
                         logger.warning("Could not get GPS fix within timeout. Analysis may be limited.")
-            
+
             # Main exposure loop
             while self.num_images is None or image_index < self.num_images:
                 # Check if we should stop (from external signal)
                 if shared_state and not shared_state.is_running:
                     logger.info("Stopping exposure sequence due to external signal")
                     break
-                    
+
                 logger.info(f"--- Acquiring image {image_index + 1} ---")
-                
+
                 # Acquire single frame
                 image_data, buffer = self.camera.acquire_image()
-                
+
                 # Handle acquisition failure
                 if image_data is None or buffer is None:
                     logger.warning(f"Failed to acquire image {image_index + 1}. Skipping.")
                     time.sleep(0.5)  # Brief pause after failure
                     continue
-                    
-                # Process the image if requested
+
+                # Process the image asynchronously if requested
                 if self.perform_analysis:
-                    self._process_image(image_data, image_index, is_first_image)
+                    asyncio.run(self._process_image_async(image_data, image_index, is_first_image))
                     # First image is now processed
                     if is_first_image and self.edges is not None:
                         is_first_image = False
-                        
+
                 # Save the image
                 self.camera.save_fits(image_data, image_index + 1)
-                
+
                 # Save JPEG with optional edge overlay
                 self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
 
                 # Queue buffer back
                 self.camera.queue_buffer(buffer)
-                
+
                 # Sleep between frames
                 if self.sleep_time > 0:
                     time.sleep(self.sleep_time)
-                
+
                 # Increment image index
                 image_index += 1
-                    
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error in exposure sequence: {e}", exc_info=True)
             return False
