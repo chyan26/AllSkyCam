@@ -802,23 +802,8 @@ class CameraAcquisition:
 import threading  # Add threading for the lock
 
 class ExposureSequence:
-    """
-    Controls the exposure sequence, camera operation, and image processing.
-    Keeps the acquisition loop separate from the camera hardware interaction.
-    """
     def __init__(self, camera, num_images=None, sleep_time=0.1, 
                  perform_analysis=False, visualizer=None, gps_handler=None):
-        """
-        Initialize an exposure sequence controller.
-        
-        Args:
-            camera: CameraAcquisition instance for hardware control
-            num_images: Number of images to capture in sequence (None for continuous)
-            sleep_time: Time to sleep between exposures (seconds)
-            perform_analysis: Whether to analyze images for sun position
-            visualizer: HeadingVisualizer instance for displaying heading
-            gps_handler: GPSHandler instance for GPS data
-        """
         self.camera = camera
         self.num_images = num_images
         self.sleep_time = sleep_time
@@ -834,48 +819,38 @@ class ExposureSequence:
         self.sunAzi = None
         self.is_running = False
 
-        # Add a threading lock for shared state
-        self.state_lock = threading.Lock()
+        # Use reentrant lock
+        self.state_lock = threading.RLock()
         
     async def _process_image_async(self, image_data, image_index, is_first_image):
-        """Asynchronous wrapper for processing an image."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._process_image, image_data, image_index, is_first_image)
 
     def run(self, shared_state=None):
-        """
-        Run the exposure sequence, capturing and processing images.
-        """
         logger.info(f"Starting exposure sequence: {'continuous' if self.num_images is None else self.num_images} images")
         self.is_running = True
         is_first_image = True
-        image_index = 0  # Track the image index for continuous mode
+        image_index = 0
 
         try:
-            # Initialize camera if not already done
             if not self.camera.initialize():
                 logger.error("Camera initialization failed")
                 return False
 
-            # Start acquisition
             if not self.camera.start_acquisition():
                 logger.error("Failed to start acquisition")
                 return False
 
-            # ADDED: If we're doing analysis, wait for first GPS fix from GPSHandler
             if self.perform_analysis and self.gps_handler:
                 logger.info("Waiting for initial GPS fix...")
                 gps_location = self.gps_handler.wait_for_fix(timeout=10)
                 if gps_location:
                     lat, lon = gps_location
                     logger.info(f"Got initial GPS fix: Lat={lat:.6f}, Lon={lon:.6f}")
-
-                    # Set initial coordinates in camera for metadata
                     with self.camera.state_lock:
                         self.camera.init_latitute = lat
                         self.camera.init_longitude = lon
                 else:
-                    # Use default coordinates from GPS handler if available
                     if self.gps_handler.default_lat is not None and self.gps_handler.default_lon is not None:
                         lat, lon = self.gps_handler.default_lat, self.gps_handler.default_lon
                         logger.info(f"Using default coordinates: Lat={lat}, Lon={lon}")
@@ -885,45 +860,34 @@ class ExposureSequence:
                     else:
                         logger.warning("Could not get GPS fix within timeout. Analysis may be limited.")
 
-            # Main exposure loop
             while self.num_images is None or image_index < self.num_images:
-                # Check if we should stop (from external signal)
                 if shared_state and not shared_state.is_running:
                     logger.info("Stopping exposure sequence due to external signal")
                     break
 
                 logger.info(f"--- Acquiring image {image_index + 1} ---")
-
-                # Acquire single frame
                 image_data, buffer = self.camera.acquire_image()
 
-                # Handle acquisition failure
                 if image_data is None or buffer is None:
                     logger.warning(f"Failed to acquire image {image_index + 1}. Skipping.")
-                    time.sleep(0.5)  # Brief pause after failure
+                    time.sleep(0.5)
                     continue
 
-                # Process the image asynchronously if requested
                 if self.perform_analysis:
                     asyncio.run(self._process_image_async(image_data, image_index, is_first_image))
-                    # First image is now processed
-                    if is_first_image and self.edges is not None:
-                        is_first_image = False
+                    with self.state_lock:
+                        if is_first_image and self.edges is not None:
+                            is_first_image = False
 
-                # Save the image
-                self.camera.save_fits(image_data, image_index + 1)
+                with self.state_lock:
+                    self.camera.save_fits(image_data, image_index + 1)
+                    self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
 
-                # Save JPEG with optional edge overlay
-                self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
-
-                # Queue buffer back
                 self.camera.queue_buffer(buffer)
 
-                # Sleep between frames
                 if self.sleep_time > 0:
                     time.sleep(self.sleep_time)
 
-                # Increment image index
                 image_index += 1
 
             return True
@@ -933,61 +897,51 @@ class ExposureSequence:
             return False
         finally:
             self.is_running = False
-            # Camera cleanup is handled by the caller
             
     def _process_image(self, image_data, image_index, is_first_image):
-        """Process an image for sun detection and heading calculation."""
         try:
             processor = ImageProcessor(image_data.astype('float'))
             local_time = datetime.now()
             logger.info(f"Processing image {image_index + 1} at Local Time: {local_time}")
             
-            # Thread-safe access to GPS coordinates
             with self.camera.state_lock:
                 current_lat = self.camera.init_latitute
                 current_lon = self.camera.init_longitude
                 
-            # First image processing
             if is_first_image:
                 if current_lat is None or current_lon is None:
                     logger.warning("GPS coordinates not available for first image analysis")
                     return
                     
-                # Calculate sun position based on GPS and time
                 processor.calculateSun(current_lat, current_lon, local_time)
                 sun_azi = processor.sunAzi
                 logger.info(f"Calculated Sun Position: Alt={processor.sunAlt:.2f}, Azi={processor.sunAzi:.2f}")
                 
-                # Detect sun and horizon in image
                 processor.sunDetectionSEP(display=False)
                 detected_edges = processor.edgeDetection(display=False)
-                
                 logger.info(f"Detected edges: {detected_edges}")
 
                 if processor.sunLocation is not None and detected_edges is not None:
                     sun_x, sun_y, _ = processor.sunLocation
                     logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
                     
-                    # Calculate angle relative to image center
                     image_center_x = image_data.shape[1] / 2
                     image_center_y = image_data.shape[0] / 2
-                    # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
                     angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
-                    
                     logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
                     
                     allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
-                    
-                    # Calculate measured sun position
                     processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
                     logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
                     
-                    # Calculate initial differences
                     delta_alt = processor.sunAlt - processor.sunMeasuredAlt
                     delta_azi = processor.sunAzi - processor.sunMeasuredAzi
                     
-                    # Thread-safe update of shared state
-                    with self.state_lock:
+                    if not self.state_lock.acquire(timeout=5):
+                        logger.error("Failed to acquire state lock within 5 seconds")
+                        return
+                    try:
+                        logger.debug(f"Updating state: edges={detected_edges}, sunLocation={(sun_x, sun_y)}")
                         self.edges = detected_edges
                         self.sunLocation = (sun_x, sun_y)
                         self.sunAzi = sun_azi
@@ -996,17 +950,18 @@ class ExposureSequence:
                         self.camera.measured_alt = processor.sunMeasuredAlt
                         self.camera.measured_azi = processor.sunMeasuredAzi
                         self.camera.head_diff = delta_azi
+                    finally:
+                        self.state_lock.release()
                     
                     logger.info(f"Initial Delta Alt: {delta_alt:.2f}, Delta Azi: {delta_azi:.2f}")
                     logger.info(f"Initial Heading difference = {delta_azi:.2f}")
                     
-                    # Update visualizer if available
                     if self.visualizer:
+                        logger.debug(f"Updating visualizer with heading: {delta_azi}")
                         self.visualizer.update_heading(delta_azi)
                 else:
                     logger.warning("Sun or horizon detection failed on first image")
             
-            # Subsequent images processing
             else:
                 with self.state_lock:
                     edges = self.edges
@@ -1014,51 +969,51 @@ class ExposureSequence:
 
                 if edges is not None and sun_azi is not None:
                     detected_edges = processor.edgeDetection(display=False)
+                    logger.info(f"Detected edges: {detected_edges}")
                     
                     processor.sunDetectionSEP(display=False)
                     if processor.sunLocation is not None:
                         sun_x, sun_y, _ = processor.sunLocation
                         logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
                         
-                        # Calculate angle relative to image center
                         image_center_x = image_data.shape[1] / 2
                         image_center_y = image_data.shape[0] / 2
-                        # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
                         angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
-
                         logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
                         
-                        # Calculate and update latitude/longitude
-                        allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                        # Use new edges for calculations
+                        allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
                         processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
                         logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
                         
                         head_diff = sun_azi - processor.sunMeasuredAzi
                         
-                        # Thread-safe update of shared state
-                        with self.state_lock:
+                        if not self.state_lock.acquire(timeout=5):
+                            logger.error("Failed to acquire state lock within 5 seconds")
+                            return
+                        try:
+                            logger.debug(f"Updating state: edges={detected_edges}, sunLocation={(sun_x, sun_y)}")
                             self.edges = detected_edges
                             self.sunLocation = (sun_x, sun_y)
                             self.camera.measured_alt = processor.sunMeasuredAlt
                             self.camera.measured_azi = processor.sunMeasuredAzi
                             self.camera.head_diff = head_diff
+                        finally:
+                            self.state_lock.release()
                         
                         logger.info(f"Heading difference = {head_diff:.2f}")
                         
-                        # Update visualizer
                         if self.visualizer:
+                            logger.debug(f"Updating visualizer with heading: {head_diff}")
                             self.visualizer.update_heading(head_diff)
                         
-                        # Calculate and update latitude/longitude
                         latitude, longitude = processor.calculateLatLon(processor.sunMeasuredAlt, processor.sunMeasuredAzi, local_time)
                         if latitude is not None and longitude is not None:
                             with self.camera.state_lock:
                                 self.camera.measured_lat = latitude
                                 self.camera.measured_lon = longitude
-                            
                             logger.info(f"Calculated Lat/Lon: {latitude:.6f}, {longitude:.6f}")
                             
-                            # Compare with current GPS
                             if current_lat is not None and current_lon is not None:
                                 lat_diff = latitude - current_lat
                                 lon_diff = longitude - current_lon
@@ -1068,7 +1023,6 @@ class ExposureSequence:
             
         except Exception as e:
             logger.error(f"Error processing image {image_index + 1}: {e}", exc_info=True)
-
 
 # --- Shared State for Thread Communication ---
 class SharedState:
