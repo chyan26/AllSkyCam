@@ -799,6 +799,8 @@ class CameraAcquisition:
 
 
 # NEW CLASS: Exposure sequence controller (separated from camera hardware)
+import threading  # Add threading for the lock
+
 class ExposureSequence:
     """
     Controls the exposure sequence, camera operation, and image processing.
@@ -831,6 +833,9 @@ class ExposureSequence:
         self.edges = None
         self.sunAzi = None
         self.is_running = False
+
+        # Add a threading lock for shared state
+        self.state_lock = threading.Lock()
         
     async def _process_image_async(self, image_data, image_index, is_first_image):
         """Asynchronous wrapper for processing an image."""
@@ -950,7 +955,7 @@ class ExposureSequence:
                     
                 # Calculate sun position based on GPS and time
                 processor.calculateSun(current_lat, current_lon, local_time)
-                self.sunAzi = processor.sunAzi
+                sun_azi = processor.sunAzi
                 logger.info(f"Calculated Sun Position: Alt={processor.sunAlt:.2f}, Azi={processor.sunAzi:.2f}")
                 
                 # Detect sun and horizon in image
@@ -960,7 +965,6 @@ class ExposureSequence:
                 logger.info(f"Detected edges: {detected_edges}")
 
                 if processor.sunLocation is not None and detected_edges is not None:
-                    self.edges = detected_edges
                     sun_x, sun_y, _ = processor.sunLocation
                     logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
                     
@@ -970,11 +974,8 @@ class ExposureSequence:
                     # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
                     angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
                     
-                    
                     logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
                     
-                    
-                    self.sunLocation = (sun_x, sun_y)
                     allsky_x, allsky_y, allsky_r = detected_edges[0,0], detected_edges[0,1], detected_edges[0,2]
                     
                     # Calculate measured sun position
@@ -982,79 +983,88 @@ class ExposureSequence:
                     logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
                     
                     # Calculate initial differences
-                    self.deltaAlt = processor.sunAlt - processor.sunMeasuredAlt
-                    self.deltaAzi = processor.sunAzi - processor.sunMeasuredAzi
+                    delta_alt = processor.sunAlt - processor.sunMeasuredAlt
+                    delta_azi = processor.sunAzi - processor.sunMeasuredAzi
                     
-                    # Thread-safe update of camera state
-                    with self.camera.state_lock:
+                    # Thread-safe update of shared state
+                    with self.state_lock:
+                        self.edges = detected_edges
+                        self.sunLocation = (sun_x, sun_y)
+                        self.sunAzi = sun_azi
+                        self.deltaAlt = delta_alt
+                        self.deltaAzi = delta_azi
                         self.camera.measured_alt = processor.sunMeasuredAlt
                         self.camera.measured_azi = processor.sunMeasuredAzi
-                        self.camera.head_diff = self.deltaAzi
+                        self.camera.head_diff = delta_azi
                     
-                    logger.info(f"Initial Delta Alt: {self.deltaAlt:.2f}, Delta Azi: {self.deltaAzi:.2f}")
-                    logger.info(f"Initial Heading difference = {self.deltaAzi:.2f}")
+                    logger.info(f"Initial Delta Alt: {delta_alt:.2f}, Delta Azi: {delta_azi:.2f}")
+                    logger.info(f"Initial Heading difference = {delta_azi:.2f}")
                     
                     # Update visualizer if available
                     if self.visualizer:
-                        self.visualizer.update_heading(self.deltaAzi)
+                        self.visualizer.update_heading(delta_azi)
                 else:
                     logger.warning("Sun or horizon detection failed on first image")
             
             # Subsequent images processing
-            elif self.edges is not None and self.sunAzi is not None:
-                detected_edges = processor.edgeDetection(display=False)
-                self.edges = detected_edges
-                logger.info(f"Detected edges: {detected_edges}")
-                
-                processor.sunDetectionSEP(display=False)
-                if processor.sunLocation is not None:
-                    sun_x, sun_y, _ = processor.sunLocation
-                    logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
-                    
-                    # Calculate angle relative to image center
-                    image_center_x = image_data.shape[1] / 2
-                    image_center_y = image_data.shape[0] / 2
-                    # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
-                    angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
+            else:
+                with self.state_lock:
+                    edges = self.edges
+                    sun_azi = self.sunAzi
 
-                    logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
+                if edges is not None and sun_azi is not None:
+                    detected_edges = processor.edgeDetection(display=False)
                     
-                    # Calculate and update latitude/longitude
-                    allsky_x, allsky_y, allsky_r = self.edges[0,0], self.edges[0,1], self.edges[0,2]
-                    self.sunLocation = (sun_x, sun_y)
-                    processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
-                    logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
-                    
-                    head_diff = self.sunAzi - processor.sunMeasuredAzi
-                    
-                    # Thread-safe update of camera state
-                    with self.camera.state_lock:
-                        self.camera.measured_alt = processor.sunMeasuredAlt
-                        self.camera.measured_azi = processor.sunMeasuredAzi
-                        self.camera.head_diff = head_diff
-                    
-                    logger.info(f"Heading difference = {head_diff:.2f}")
-                    
-                    # Update visualizer
-                    if self.visualizer:
-                        self.visualizer.update_heading(head_diff)
-                    
-                    # Calculate and update latitude/longitude
-                    latitude, longitude = processor.calculateLatLon(processor.sunMeasuredAlt, processor.sunMeasuredAzi, local_time)
-                    if latitude is not None and longitude is not None:
-                        with self.camera.state_lock:
-                            self.camera.measured_lat = latitude
-                            self.camera.measured_lon = longitude
+                    processor.sunDetectionSEP(display=False)
+                    if processor.sunLocation is not None:
+                        sun_x, sun_y, _ = processor.sunLocation
+                        logger.info(f"Sun detected at: ({sun_x:.2f}, {sun_y:.2f})")
                         
-                        logger.info(f"Calculated Lat/Lon: {latitude:.6f}, {longitude:.6f}")
+                        # Calculate angle relative to image center
+                        image_center_x = image_data.shape[1] / 2
+                        image_center_y = image_data.shape[0] / 2
+                        # Adjust atan2 to align 0 degrees with the Y-axis and increase clockwise
+                        angle_to_center = (np.degrees(np.arctan2(sun_x - image_center_x, sun_y - image_center_y)) + 360) % 360
+
+                        logger.info(f"Angle relative to image center: {angle_to_center:.2f}°")
                         
-                        # Compare with current GPS
-                        if current_lat is not None and current_lon is not None:
-                            lat_diff = latitude - current_lat
-                            lon_diff = longitude - current_lon
-                            logger.info(f"Difference from GPS: dLat={lat_diff:.6f}, dLon={lon_diff:.6f}")
-                else:
-                    logger.warning(f"Sun detection failed for image {image_index + 1}")
+                        # Calculate and update latitude/longitude
+                        allsky_x, allsky_y, allsky_r = edges[0,0], edges[0,1], edges[0,2]
+                        processor.calSunAltAzi((allsky_x, allsky_y), (sun_x, sun_y), allsky_r)
+                        logger.info(f"Measured Sun Position: Alt={processor.sunMeasuredAlt:.2f}, Azi={processor.sunMeasuredAzi:.2f}")
+                        
+                        head_diff = sun_azi - processor.sunMeasuredAzi
+                        
+                        # Thread-safe update of shared state
+                        with self.state_lock:
+                            self.edges = detected_edges
+                            self.sunLocation = (sun_x, sun_y)
+                            self.camera.measured_alt = processor.sunMeasuredAlt
+                            self.camera.measured_azi = processor.sunMeasuredAzi
+                            self.camera.head_diff = head_diff
+                        
+                        logger.info(f"Heading difference = {head_diff:.2f}")
+                        
+                        # Update visualizer
+                        if self.visualizer:
+                            self.visualizer.update_heading(head_diff)
+                        
+                        # Calculate and update latitude/longitude
+                        latitude, longitude = processor.calculateLatLon(processor.sunMeasuredAlt, processor.sunMeasuredAzi, local_time)
+                        if latitude is not None and longitude is not None:
+                            with self.camera.state_lock:
+                                self.camera.measured_lat = latitude
+                                self.camera.measured_lon = longitude
+                            
+                            logger.info(f"Calculated Lat/Lon: {latitude:.6f}, {longitude:.6f}")
+                            
+                            # Compare with current GPS
+                            if current_lat is not None and current_lon is not None:
+                                lat_diff = latitude - current_lat
+                                lon_diff = longitude - current_lon
+                                logger.info(f"Difference from GPS: dLat={lat_diff:.6f}, dLon={lon_diff:.6f}")
+                    else:
+                        logger.warning(f"Sun detection failed for image {image_index + 1}")
             
         except Exception as e:
             logger.error(f"Error processing image {image_index + 1}: {e}", exc_info=True)
