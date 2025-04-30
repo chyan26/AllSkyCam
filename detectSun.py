@@ -115,26 +115,6 @@ class ImageProcessor:
         except FileNotFoundError:
             self.logger.error(f"Image not found at {self.imageFileName}.")
 
-    def getInitialLocationFromGPS(self):
-
-        
-        gps = GPSReader(system='GNSS').connect()
-        
-        try:
-            coords = gps.get_coordinates()
-            if coords:
-                lat, lon, gps_time, sats = coords
-                local_time = GPSReader.convert_to_taipei_time(gps_time)
-                self.initial_latitude = lat
-                self.initial_longitude = lon
-                self.logger.info(f"Latitude: {lat:.6f}, Longitude: {lon:.6f}")
-            else:
-                print("Could not get GPS fix")
-        finally:
-            gps.disconnect()
-
-        return lat, lon
-
     def display_image(self):
         """Displays the grayscale image."""
         if self.imageData is not None:
