@@ -600,7 +600,7 @@ class CameraAcquisition:
             img_normalized = np.clip((image_data - img_min) / (img_max - img_min) * 255, 0, 255).astype(np.uint8)
             
             # Enhance low count part using CLAHE (Contrast Limited Adaptive Histogram Equalization)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=20.0, tileGridSize=(8, 8))
             img_enhanced = clahe.apply(img_normalized)
             
             # Convert to 3-channel so we can draw colored circles
@@ -986,7 +986,8 @@ class ExposureSequence:
                     self.state_lock.release()
 
                 if edges is not None and sun_azi is not None:
-                    detected_edges = processor.edgeDetection(display=False)
+                    #detected_edges = processor.edgeDetection(display=False)
+                    detected_edges = self.edges
                     logger.info(f"Detected edges: {detected_edges}")
                     
                     processor.sunDetectionSEP(display=False)
@@ -1056,7 +1057,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=0.02, help="Exposure time in milliseconds")
     parser.add_argument("--images", type=int, default=None, help="Number of images to acquire")
-    parser.add_argument("--sleep", type=float, default=0.1, help="Time in seconds between exposures")
+    parser.add_argument("--sleep", type=float, default=0, help="Time in seconds between exposures")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate (default: minimum required)")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     parser.add_argument("--perform_analysis", action='store_true', help="Set this flag to perform sun analysis on the images")
@@ -1144,6 +1145,9 @@ def main():
     # Set callback to update visualizer with GPS heading
     gps_handler.set_heading_callback(lambda heading: visualizer.update_gps_heading(heading))
     
+    # Set the speed callback
+    gps_handler.set_speed_callback(lambda speed: visualizer.update_speed(speed))
+
     # Start GPS handler
     gps_handler.start()
         

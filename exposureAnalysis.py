@@ -59,7 +59,7 @@ def extract_gps_and_heading(log_file):
 
     # Match the specific log message for GPS updates
     gps_pattern = re.compile(
-        timestamp_pattern + r' - INFO - idsExposure.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
+        timestamp_pattern + r' - INFO - gpsHandler.py - Updated GPS location: Latitude=([\d.-]+), Longitude=([\d.-]+), Time=.*'
     )
     # Match the specific log message for heading difference calculation
     heading_pattern = re.compile(
@@ -512,7 +512,7 @@ def main():
     )
     args = parser.parse_args()
 
-    log_file = 'logs/system_20250422_151314.log'  # Make sure this path is correct
+    log_file = 'logs/system_20250502_145621.log'  # Make sure this path is correct
     csv_file = 'gps_data_extracted.csv'  # Use a different name to avoid confusion
     force_reextract = args.force_reextract  # Use the command-line argument
     # --- End Configuration ---
