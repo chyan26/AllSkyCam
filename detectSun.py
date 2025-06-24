@@ -147,6 +147,7 @@ class ImageProcessor:
     def edgeDetection(self, display=False):
 
         mask = cv2.inRange(self.imageData, 50, self.imageData.max()/2)
+
         masked_image = cv2.bitwise_and(self.imageData, self.imageData, mask=mask)
         image_8bit = cv2.convertScaleAbs(masked_image, alpha=(255.0 / masked_image.max()))
 
@@ -176,7 +177,9 @@ class ImageProcessor:
                 plt.gca().add_patch(circle)
             plt.axis('off')
             plt.show()
-        
+        if circles is None:
+            self.logger.warning("No circles detected in the image.")
+            return None
         self.edge = circles[0,:]
         return circles[0,:]
     
