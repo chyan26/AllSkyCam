@@ -110,5 +110,19 @@ The script uses the logging module to log acquisition and processing details. Lo
 - maxRadius = 1200
 
 
+## File Usage
+
+| File/Folder         | Description                                                      |
+|---------------------|------------------------------------------------------------------|
+| `main.py`           | Main script for camera acquisition and image processing.          |
+| `utils.py`          | Utility functions used throughout the project.                    |
+| `config.py`         | Configuration settings and constants.                             |
+| `analysis.py`       | Functions for image analysis and Sun azimuth calculation.         |
+| `output/`           | Directory where acquired FITS images and results are saved.       |
+| `README.md`         | Project documentation and usage instructions.                     |
+| `requirements.txt`  | List of required Python packages.                                 |
+
+*Update the table above to match your actual file structure and descriptions.*
+
 ## License
 This project is licensed under the MIT License.
