@@ -805,13 +805,15 @@ import threading  # Add threading for the lock
 
 class ExposureSequence:
     def __init__(self, camera, num_images=None, sleep_time=0.1, 
-                 perform_analysis=False, visualizer=None, gps_handler=None):
+                 perform_analysis=False, visualizer=None, gps_handler=None,
+                 save_images=True):  # <-- Add this parameter
         self.camera = camera
         self.num_images = num_images
         self.sleep_time = sleep_time
         self.perform_analysis = perform_analysis
         self.visualizer = visualizer
         self.gps_handler = gps_handler
+        self.save_images = save_images  # <-- Store the flag
         
         # Analysis state variables
         self.sunLocation = None
@@ -835,9 +837,9 @@ class ExposureSequence:
         image_index = 0
 
         try:
-            if not self.camera.initialize():
-                logger.error("Camera initialization failed")
-                return False
+            #if not self.camera.initialize():
+            #    logger.error("Camera initialization failed")
+            #    return False
 
             if not self.camera.start_acquisition():
                 logger.error("Failed to start acquisition")
@@ -891,8 +893,10 @@ class ExposureSequence:
                     logger.error("Failed to acquire state lock within 5 seconds")
                     continue
                 try:
-                    self.camera.save_fits(image_data, image_index + 1)
-                    self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
+                    # Only save images if the flag is set
+                    if self.save_images:
+                        self.camera.save_fits(image_data, image_index + 1)
+                        self.camera.save_jpeg(image_data, image_index + 1, self.edges, self.sunLocation)
                 finally:
                     self.state_lock.release()
 
