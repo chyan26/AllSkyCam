@@ -184,7 +184,7 @@ def plot_coordinates(data):
     sequences = np.array([s if s is not None else np.nan for s in sequences], dtype=float) # Keep as float for NaN
 
     # Apply heading offset if needed (e.g., +100 degrees as in original)
-    heading_offset = 0
+    heading_offset = 16.7
     headings_adjusted = headings + heading_offset # NaN values will propagate
 
     # Top subplot - GPS track and vectors
@@ -332,7 +332,7 @@ def plot_angle_comparison(data):
     headings = np.array([h if h is not None else np.nan for h in headings], dtype=float)
 
     # Apply heading offset
-    heading_offset = 100.0
+    heading_offset = 16.7
     headings_adjusted = headings + heading_offset
 
     # Calculate track angles and differences
@@ -454,7 +454,7 @@ def find_heading_anomalies(data, track_threshold=5, angle_difference_threshold=3
     sequences = np.array([s if s is not None else np.nan for s in sequences], dtype=float)
 
     # Apply heading offset
-    heading_offset = 100.0
+    heading_offset = 0.0
     headings_adjusted = headings + heading_offset
 
     track_angles = []
@@ -512,7 +512,7 @@ def main():
     )
     args = parser.parse_args()
 
-    log_file = 'logs/system_20250502_145621.log'  # Make sure this path is correct
+    log_file = 'logs/system_20250620_115042.log'  # Make sure this path is correct
     csv_file = 'gps_data_extracted.csv'  # Use a different name to avoid confusion
     force_reextract = args.force_reextract  # Use the command-line argument
     # --- End Configuration ---
