@@ -1,4 +1,9 @@
-output/*.fits
+output/fits/*.fits
+output/jpeg/*.jpg
+output/
+
+images/*/*.fits
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
