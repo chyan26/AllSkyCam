@@ -151,7 +151,7 @@ class CameraAcquisition:
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
-    parser.add_argument("--exposure", type=float, default=0.2, help="Exposure time in milliseconds")
+    parser.add_argument("--exposure", type=float, default=2000, help="Exposure time in milliseconds")
     parser.add_argument("--images", type=int, default=10, help="Number of images to acquire")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
