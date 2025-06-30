@@ -75,6 +75,18 @@ class CameraAcquisition:
         # Set the pixel format
         self.remote_nodemap.FindNode("PixelFormat").SetCurrentEntry('Mono12')
         logging.info("Pixel format set to Mono12")
+
+        # Enable built-in hot pixel correction if available
+        try:
+            hot_pixel_node = self.remote_nodemap.FindNode("HotPixelCorrection")
+            if hot_pixel_node and hot_pixel_node.IsWritable():
+                hot_pixel_node.SetCurrentEntry("On")
+                logging.info("Hot pixel correction enabled (IDS built-in)")
+            else:
+                logging.warning("HotPixelCorrection node not found or not writable")
+        except Exception as e:
+            logging.warning(f"Could not enable hot pixel correction: {e}")
+
         self.remote_nodemap.FindNode("TLParamsLocked").SetValue(1)
         logging.info("Transport layer parameters locked")
 
