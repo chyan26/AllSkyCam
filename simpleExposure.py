@@ -61,6 +61,17 @@ class CameraAcquisition:
         except Exception as e:
             logging.error(f"Error setting exposure time: {e}")
 
+        # Turn off auto gain
+        try:
+            gain_auto_node = self.remote_nodemap.FindNode("GainAuto")
+            if gain_auto_node:
+                gain_auto_node.SetCurrentEntry("Off")
+                logging.info("Auto gain turned off")
+            else:
+                logging.warning("GainAuto node not found")
+        except Exception as e:
+            logging.error(f"Error turning off auto gain: {e}")
+
         # Set the pixel format
         self.remote_nodemap.FindNode("PixelFormat").SetCurrentEntry('Mono12')
         logging.info("Pixel format set to Mono12")
@@ -102,9 +113,13 @@ class CameraAcquisition:
         self.data_stream.StartAcquisition()
         self.remote_nodemap.FindNode("AcquisitionStart").Execute()
 
+        # Calculate timeout based on exposure time plus buffer for processing
+        timeout_ms = max(int(self.exposure_time_ms + 2000), 5000)  # At least 5 seconds
+        logging.info(f"Using timeout of {timeout_ms} ms for image acquisition")
+
         for i in range(self.num_images):
             try:
-                buffer = self.data_stream.WaitForFinishedBuffer(1000)
+                buffer = self.data_stream.WaitForFinishedBuffer(timeout_ms)
                 img = ids_peak_ipl_extension.BufferToImage(buffer)
                 image_data = img.get_numpy_2D_16()
                 self.save_fits(image_data, i)
