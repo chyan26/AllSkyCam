@@ -2,6 +2,7 @@ import argparse
 import logging
 from ids_peak import ids_peak
 from ids_peak import ids_peak_ipl_extension
+from ids_peak_ipl import ids_peak_ipl
 import numpy as np
 from astropy.io import fits
 import os
@@ -16,11 +17,12 @@ logging.basicConfig(level=logging.INFO,
                     datefmt="%Y-%m-%dT%H:%M:%S")
 
 class CameraAcquisition:
-    def __init__(self, exposure_time_ms=10.0, num_images=1, num_buffers=None, output_dir="output"):
+    def __init__(self, exposure_time_ms=10.0, num_images=1, num_buffers=None, output_dir="output", hotpixel_correction=False):
         self.exposure_time_ms = exposure_time_ms
         self.num_images = num_images
         self.num_buffers = num_buffers
         self.output_dir = output_dir
+        self.hotpixel_correction = hotpixel_correction
         self.device = None
         self.data_stream = None
         self.remote_nodemap = None
@@ -75,18 +77,6 @@ class CameraAcquisition:
         # Set the pixel format
         self.remote_nodemap.FindNode("PixelFormat").SetCurrentEntry('Mono12')
         logging.info("Pixel format set to Mono12")
-
-        # Enable built-in hot pixel correction if available
-        try:
-            hot_pixel_node = self.remote_nodemap.FindNode("HotPixelCorrection")
-            if hot_pixel_node and hot_pixel_node.IsWritable():
-                hot_pixel_node.SetCurrentEntry("On")
-                logging.info("Hot pixel correction enabled (IDS built-in)")
-            else:
-                logging.warning("HotPixelCorrection node not found or not writable")
-        except Exception as e:
-            logging.warning(f"Could not enable hot pixel correction: {e}")
-
         self.remote_nodemap.FindNode("TLParamsLocked").SetValue(1)
         logging.info("Transport layer parameters locked")
 
@@ -120,19 +110,29 @@ class CameraAcquisition:
         logging.info(f"Saved FITS file: {filepath}")
 
     def process_images(self):
-        """Processes a configurable number of images."""
+        """Processes a configurable number of images, with optional hot pixel correction."""
         logging.info("Starting image acquisition...")
         self.data_stream.StartAcquisition()
         self.remote_nodemap.FindNode("AcquisitionStart").Execute()
 
-        # Calculate timeout based on exposure time plus buffer for processing
-        timeout_ms = max(int(self.exposure_time_ms + 2000), 5000)  # At least 5 seconds
+        # Only create HotpixelCorrection object if needed
+        hotpixel_correction_obj = None
+        if self.hotpixel_correction:
+            hotpixel_correction_obj = ids_peak_ipl.HotpixelCorrection()
+            logging.info("Hot pixel correction is enabled.")
+        else:
+            logging.info("Hot pixel correction is disabled.")
+
+        timeout_ms = max(int(self.exposure_time_ms + 2000), 5000)
         logging.info(f"Using timeout of {timeout_ms} ms for image acquisition")
 
         for i in range(self.num_images):
             try:
                 buffer = self.data_stream.WaitForFinishedBuffer(timeout_ms)
                 img = ids_peak_ipl_extension.BufferToImage(buffer)
+                # Apply hot pixel correction if enabled
+                if hotpixel_correction_obj:
+                    img = hotpixel_correction_obj.CorrectAdaptive(img)
                 image_data = img.get_numpy_2D_16()
                 self.save_fits(image_data, i)
                 self.data_stream.QueueBuffer(buffer)
@@ -175,13 +175,15 @@ class CameraAcquisition:
             self.cleanup()
 
 
+
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
     parser.add_argument("--exposure", type=float, default=2000, help="Exposure time in milliseconds (max: 2000)")
     parser.add_argument("--images", type=int, default=5, help="Number of images to acquire")
-    parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
+    parser.add_argument("--buffers", type=int, defaultelp="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
+    parser.add_argument("--hotpixel", action="store_true", help="Enable hot pixel correction (default: off)")
     return parser.parse_args()
 
 
@@ -196,7 +198,8 @@ def main():
         exposure_time_ms=args.exposure,
         num_images=args.images,
         num_buffers=args.buffers,
-        output_dir=args.output
+        output_dir=args.output,
+        hotpixel_correction=args.hotpixel
     )
     acquisition.run()
 
