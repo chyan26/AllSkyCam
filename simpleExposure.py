@@ -166,8 +166,8 @@ class CameraAcquisition:
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="IDS Peak Camera Acquisition Script")
-    parser.add_argument("--exposure", type=float, default=2000, help="Exposure time in milliseconds")
-    parser.add_argument("--images", type=int, default=10, help="Number of images to acquire")
+    parser.add_argument("--exposure", type=float, default=2000, help="Exposure time in milliseconds (max: 2000)")
+    parser.add_argument("--images", type=int, default=5, help="Number of images to acquire")
     parser.add_argument("--buffers", type=int, default=None, help="Number of buffers to allocate")
     parser.add_argument("--output", type=str, default="output", help="Directory to save FITS files")
     return parser.parse_args()
@@ -175,7 +175,10 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logging.basicConfig(level=logging.INFO)
+    # Enforce maximum exposure time
+    if args.exposure > 2000:
+        logging.warning("Exposure time exceeds maximum (2000 ms). Setting to 2000 ms.")
+        args.exposure = 2000
 
     acquisition = CameraAcquisition(
         exposure_time_ms=args.exposure,
