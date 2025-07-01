@@ -21,7 +21,7 @@ import os
 import unittest
 from typing import Dict, List, Tuple
 import numpy as np
-from ids_camera import CameraAcquisition, create_simple_camera, create_advanced_camera
+from idsCamera import CameraAcquisition, create_simple_camera, create_advanced_camera
 
 # Setup logging
 logging.basicConfig(
