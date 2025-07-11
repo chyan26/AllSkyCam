@@ -1,6 +1,13 @@
 # Dashboard External Data API
 
-The AllSkyCam Dashboard can accept data from external sources through dedicated update methods.
+The AllSkyCam Dashboard is designed for autonomous operation and accepts data from external sources through dedicated update methods. All data is displayed simultaneously without requiring manual interaction.
+
+## Design Principles
+
+- **Autonomous Operation**: All data visible without manual clicks or tabs
+- **Real-time Updates**: Accept data at any frequency from external sources  
+- **Thread-safe**: Safe for multi-threaded data sources
+- **No Manual Interaction**: Suitable for unattended operation
 
 ## Dashboard Class Methods
 
@@ -48,6 +55,7 @@ dashboard.update_imu_data(accel_x=None, accel_y=None, accel_z=None,
 - **gyro_x, gyro_y, gyro_z**: Gyroscope values in °/s
 - **mag_x, mag_y, mag_z**: Magnetometer values in µT
 - **temperature**: Temperature in °C
+- **Note**: All IMU data (accelerometer, gyroscope, magnetometer) is displayed simultaneously in a compact grid layout - no manual interaction required for autonomous operation
 - **Example**:
   ```python
   dashboard.update_imu_data(

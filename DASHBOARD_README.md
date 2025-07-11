@@ -18,7 +18,7 @@ The dashboard is a **pure display component** that accepts data from external so
 - **Image Preview**: 200x200 square with aspect ratio preservation
 - **Compass Display**: GPS and sun heading vectors with degree markings
 - **GPS Data**: Coordinates, altitude, satellites, fix quality
-- **IMU Data**: Tabbed interface for accelerometer/gyroscope/magnetometer
+- **IMU Data**: All sensor data (accelerometer/gyroscope/magnetometer) visible simultaneously - no manual interaction required
 - **Temperature**: Real-time sensor temperature display
 
 ## Quick Start
