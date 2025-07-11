@@ -167,34 +167,34 @@ class Dashboard:
         
         # Create a compact grid layout for all IMU data
         # Row 0: Headers
-        ttk.Label(imu_frame, text="Accel (m/s²)", font=('TkDefaultFont', 8, 'bold')).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0,2))
-        ttk.Label(imu_frame, text="Gyro (°/s)", font=('TkDefaultFont', 8, 'bold')).grid(row=0, column=2, columnspan=2, sticky=tk.W, padx=(10,0), pady=(0,2))
-        ttk.Label(imu_frame, text="Mag (µT)", font=('TkDefaultFont', 8, 'bold')).grid(row=0, column=4, columnspan=2, sticky=tk.W, padx=(10,0), pady=(0,2))
+        ttk.Label(imu_frame, text="Accel (m/s²)", font=('TkDefaultFont', 10, 'bold')).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0,2))
+        ttk.Label(imu_frame, text="Gyro (°/s)", font=('TkDefaultFont', 10, 'bold')).grid(row=0, column=2, columnspan=2, sticky=tk.W, padx=(10,0), pady=(0,2))
+        ttk.Label(imu_frame, text="Mag (µT)", font=('TkDefaultFont', 10, 'bold')).grid(row=0, column=4, columnspan=2, sticky=tk.W, padx=(10,0), pady=(0,2))
         
         # Accelerometer data (rows 1-3, columns 0-1)
         for i, axis in enumerate(['X', 'Y', 'Z']):
-            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 8)).grid(row=i+1, column=0, sticky=tk.W)
+            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 10)).grid(row=i+1, column=0, sticky=tk.W)
             field = f'accel_{axis.lower()}'
-            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 8))
+            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 10))
             self.imu_labels[field].grid(row=i+1, column=1, sticky=tk.W, padx=(2,0))
         
         # Gyroscope data (rows 1-3, columns 2-3)
         for i, axis in enumerate(['X', 'Y', 'Z']):
-            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 8)).grid(row=i+1, column=2, sticky=tk.W, padx=(10,0))
+            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 10)).grid(row=i+1, column=2, sticky=tk.W, padx=(10,0))
             field = f'gyro_{axis.lower()}'
-            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 8))
+            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 10))
             self.imu_labels[field].grid(row=i+1, column=3, sticky=tk.W, padx=(2,0))
         
         # Magnetometer data (rows 1-3, columns 4-5)
         for i, axis in enumerate(['X', 'Y', 'Z']):
-            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 8)).grid(row=i+1, column=4, sticky=tk.W, padx=(10,0))
+            ttk.Label(imu_frame, text=f"{axis}:", font=('TkDefaultFont', 10)).grid(row=i+1, column=4, sticky=tk.W, padx=(10,0))
             field = f'mag_{axis.lower()}'
-            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 8))
+            self.imu_labels[field] = ttk.Label(imu_frame, text="0.0", font=('TkDefaultFont', 10))
             self.imu_labels[field].grid(row=i+1, column=5, sticky=tk.W, padx=(2,0))
         
         # Temperature (row 4, spans across columns)
-        ttk.Label(imu_frame, text="Temperature:", font=('TkDefaultFont', 8, 'bold')).grid(row=4, column=0, sticky=tk.W, pady=(5,0))
-        self.temp_label = ttk.Label(imu_frame, text="25.0°C", font=('TkDefaultFont', 8))
+        ttk.Label(imu_frame, text="Temperature:", font=('TkDefaultFont', 10, 'bold')).grid(row=4, column=0, sticky=tk.W, pady=(5,0))
+        self.temp_label = ttk.Label(imu_frame, text="25.0°C", font=('TkDefaultFont', 10))
         self.temp_label.grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=(2,0), pady=(5,0))
             
     def setup_controls(self, parent):
